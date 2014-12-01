@@ -1,0 +1,147 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingTop="@dimen/activity_vertical_margin"
+    tools:context=".OreadMainActivity" >
+    
+    <!--Button
+        android:id="@+id/server_activate_btn"
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:background="#00FFFFFF"
+        android:text="@string/default_text"
+        android:textColor="@color/red"
+        android:textSize="18sp" /-->
+
+    <FrameLayout
+        android:id="@+id/camera_preview"
+        android:layout_width="fill_parent"
+        android:layout_height="30dp"
+        android:layout_weight="1"
+        android:visibility="visible" />
+    
+    <ListView
+        android:id="@android:id/list"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+	    android:layout_marginLeft="@dimen/activity_horizontal_margin"
+        android:layout_marginRight="@dimen/activity_horizontal_margin"
+        android:layout_weight="1.0" />
+    
+    <LinearLayout
+        android:id="@+id/btn_panel"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/toggle_server_btn"
+            android:layout_width="fill_parent"
+            android:layout_height="50dp"
+            android:layout_weight="1.0"
+	        android:layout_marginTop="5dp"
+	        android:layout_marginBottom="5dp"
+            android:contentDescription="@string/start_server_btn_text"
+            android:src="@drawable/ic_menu_share"
+            android:text="@string/start_server_btn_text"
+            android:textSize="14sp"
+            android:tint="@color/red" />
+        
+        
+        <ImageButton
+            android:id="@+id/toggle_bluetooth_btn"
+            android:layout_width="fill_parent"
+            android:layout_height="50dp"
+            android:layout_weight="1.0"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="5dp"
+            android:contentDescription="@string/start_bt_btn_text"
+            android:src="@drawable/ic_menu_send"
+            android:text="@string/start_bt_btn_text"
+            android:textColor="@color/red"
+            android:textSize="14sp"
+            android:tint="@color/red" />
+        
+        <ImageButton
+            android:id="@+id/toggle_device_btn"
+            android:layout_width="fill_parent"
+            android:layout_height="50dp"
+            android:layout_weight="1.0"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="5dp"
+            android:contentDescription="@string/start_device_btn_text"
+            android:src="@drawable/ic_menu_play_clip"
+            android:text="@string/start_device_btn_text"
+            android:textColor="@color/red"
+            android:textSize="14sp"
+            android:tint="@color/red" />
+        
+        <ImageButton
+            android:id="@+id/capture_image_btn"
+            android:layout_width="fill_parent"
+            android:layout_height="50dp"
+            android:layout_weight="1.0"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="5dp"
+            android:contentDescription="@string/capture_image_btn_text"
+            android:src="@drawable/ic_menu_camera"
+            android:text="@string/capture_image_btn_text"
+            android:textSize="14sp"
+            android:tint="@color/green" />
+        
+        <!-->Button
+            android:id="@+id/select_btn"
+            android:layout_width="fill_parent"
+            android:layout_height="40dp"
+            android:layout_weight="1.0"
+            android:text="@string/select_btn_text"/-->
+    </LinearLayout>
+    <!-- RelativeLayout 
+        android:id="@+id/bot_panel"
+        android:layout_width="match_parent"
+        android:layout_height="110dp"
+        android:layout_weight="0.1"
+        android:paddingTop="8dp"
+        android:paddingLeft="@dimen/activity_horizontal_margin"
+        android:paddingRight="@dimen/activity_horizontal_margin"
+        android:background="#FFDDDDDD">
+        
+        <EditText 
+            android:id="@+id/send_msg_field"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentTop="true"
+            android:background="#FFFFFFFF"
+            android:inputType="text"
+            android:text=""/>
+        
+        
+        <LinearLayout
+            android:id="@+id/btn_panel_b"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:orientation="horizontal"
+            android:layout_below="@id/btn_panel">
+			<EditText 
+			            android:id="@+id/send_msg_field"
+			            android:layout_width="fill_parent"
+			            android:layout_height="40dp"
+                        android:layout_weight="0.25"
+			            android:background="#FFFFFFFF"
+			            android:inputType="text"
+			            android:text=""/>
+            
+            <Button
+                android:id="@+id/custom_send_btn"
+                android:layout_width="fill_parent"
+                android:layout_height="40dp"
+                android:layout_weight="0.75"
+                android:text="@string/custom_send_btn_text"/>
+        </LinearLayout>
+
+    </RelativeLayout-->
+
+</LinearLayout>
