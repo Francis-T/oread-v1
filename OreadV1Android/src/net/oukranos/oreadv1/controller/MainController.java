@@ -161,6 +161,12 @@ public class MainController extends AbstractController {
 	
 	private Status startBluetoothController() {
 		OLog.info("Getting paired device names...");
+		if (_bluetoothController == null) {
+			return Status.FAILED;
+		}
+		
+		_bluetoothController.initialize();
+		
 		if ( _bluetoothController.getPairedDeviceNames() == null ) {
 			OLog.err("Failed to get paired device names");
 			return Status.FAILED;

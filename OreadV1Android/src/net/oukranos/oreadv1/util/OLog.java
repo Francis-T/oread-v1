@@ -4,17 +4,17 @@ import android.util.Log;
 
 public class OLog {
 	public static void info(String message) {
-		Log.i(getMethodName(2), "Info: " + message);
+		Log.i(getMethodName(1), "Info: " + message);
 		return;
 	}
 
 	public static void err(String message) {
-		Log.e(getMethodName(2), "Error: " + message);
+		Log.e(getMethodName(1), "Error: " + message);
 		return;
 	}
 	
 	public static void warn(String message) {
-		Log.w(getMethodName(2), "Warning: " + message);
+		Log.w(getMethodName(1), "Warning: " + message);
 		return;
 	}
 	

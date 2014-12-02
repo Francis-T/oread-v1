@@ -87,7 +87,7 @@ public class BluetoothController extends AbstractController {
 
 	public Status connectToDeviceByName(String deviceName) {
 		if (this.getState() != ControllerState.READY) {
-			OLog.err("BluetoothController has not been started");
+			OLog.err("BluetoothController has not been started: " + this.getState().toString());
 			return Status.FAILED;
 		}
 		
@@ -286,7 +286,7 @@ public class BluetoothController extends AbstractController {
 	
 	private Status connectDevice(BluetoothSocket deviceSocket) {
 		if (this.getState() != ControllerState.READY) {
-			OLog.err("BluetoothController has not been started");
+			OLog.err("BluetoothController has not been started: " + this.getState().toString());
 			return Status.FAILED;
 		}
 
