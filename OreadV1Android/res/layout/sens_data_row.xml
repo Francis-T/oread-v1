@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="5dip" >
+
+    <TextView
+        android:id="@+id/timestamp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentTop="true"
+        android:text="2014.12.23 14.50.123125"
+        android:textColor="#040404"
+        android:textSize="15dip"
+        android:textStyle="bold"
+        android:typeface="sans" />
+
+    <LinearLayout
+        android:id="@+id/panel_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/timestamp"
+        android:layout_alignParentLeft="true"
+        android:orientation="horizontal">
+        
+	    <RelativeLayout
+	        android:id="@+id/panel_h2o_quality"
+	        android:layout_width="0dip"
+	        android:layout_height="wrap_content"
+	        android:layout_weight="1">
+	        <TextView
+	            android:id="@+id/lbl_ph"
+	            android:layout_width="wrap_content"
+	            android:layout_height="wrap_content"
+	            android:layout_alignParentTop="true"
+	            android:layout_alignParentLeft="true"
+	            android:layout_alignRight="@+id/lbl_do2"
+	            android:layout_marginTop="5dip"
+	            android:text="PH: "
+	            android:textColor="#040404"
+	            android:textSize="12dip"
+	            android:typeface="sans" />
+            <TextView
+                android:id="@+id/txt_ph"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@id/lbl_ph"
+                android:layout_toRightOf="@id/lbl_ph"
+                android:layout_marginTop="5dip"
+                android:text="7.00"
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+	    
+	        <TextView
+	            android:id="@+id/lbl_do2"
+	            android:layout_width="wrap_content"
+	            android:layout_height="wrap_content"
+	            android:layout_alignParentLeft="true"
+	            android:layout_alignRight="@+id/lbl_econd"
+	            android:layout_below="@id/lbl_ph"
+	            android:layout_marginTop="5dip"
+	            android:text="DO2: "
+	            android:textColor="#040404"
+	            android:textSize="12dip"
+	            android:typeface="sans" />
+            <TextView
+                android:id="@+id/txt_do2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@id/lbl_do2"
+                android:layout_toRightOf="@id/lbl_do2"
+                android:layout_marginTop="5dip"
+                android:text="20.00"
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+	    
+	        <TextView 
+	            android:id="@+id/lbl_econd"
+	            android:layout_width="wrap_content"
+	            android:layout_height="wrap_content"
+	            android:layout_alignParentLeft="true"
+	            android:layout_below="@id/lbl_do2"
+	            android:text="COND: "
+	            android:textColor="#040404"
+	            android:typeface="sans"
+	            android:textSize="12dip"
+	            android:layout_marginTop="5dip"/>
+            <TextView
+                android:id="@+id/txt_econd"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@id/lbl_econd"
+                android:layout_toRightOf="@id/lbl_econd"
+                android:layout_marginTop="5dip"
+                android:text="150000"
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+	        
+	    </RelativeLayout>
+	    
+        <RelativeLayout
+            android:id="@+id/panel_misc"
+            android:layout_width="0dip"
+            android:layout_height="wrap_content"
+            android:layout_weight="1">
+            <TextView
+                android:id="@+id/lbl_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentLeft="true"
+                android:layout_alignRight="@+id/lbl_chem"
+                android:layout_marginTop="5dip"
+                android:text="TEMP: "
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+            <TextView
+                android:id="@+id/txt_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@id/lbl_temp"
+                android:layout_toRightOf="@id/lbl_temp"
+                android:layout_marginTop="5dip"
+                android:text="36.7 deg C"
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+        
+            <TextView
+                android:id="@+id/lbl_turb"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentLeft="true"
+                android:layout_alignRight="@+id/lbl_chem"
+                android:layout_below="@id/lbl_temp"
+                android:layout_marginTop="5dip"
+                android:text="TURB: "
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+            <TextView
+                android:id="@+id/txt_turb"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@id/lbl_turb"
+                android:layout_toRightOf="@id/lbl_turb"
+                android:layout_marginTop="5dip"
+                android:text="100 NTU"
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+        
+            <TextView 
+                android:id="@+id/lbl_chem"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentLeft="true"
+                android:layout_below="@id/lbl_turb"
+                android:text="CHEM: "
+                android:textColor="#040404"
+                android:typeface="sans"
+                android:textSize="12dip"
+                android:layout_marginTop="5dip"/>
+            <TextView
+                android:id="@+id/txt_chem"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@id/lbl_chem"
+                android:layout_toRightOf="@id/lbl_chem"
+                android:layout_marginTop="5dip"
+                android:text="NORMAL"
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+        </RelativeLayout>
+    </LinearLayout>
+
+</RelativeLayout>

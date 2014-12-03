@@ -11,7 +11,7 @@
          TextureView, etc.
     -->
 
-    <TextView
+    <!-- TextView
         android:id="@+id/fullscreen_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -20,7 +20,21 @@
         android:text="@string/dummy_content"
         android:textColor="#33b5e5"
         android:textSize="50sp"
-        android:textStyle="bold" />
+        android:textStyle="bold" /-->
+
+    <LinearLayout
+        android:id="@+id/fullscreen_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal">
+	    <ListView
+	        android:id="@+id/sensor_data_list"
+	        android:layout_width="0dip"
+	        android:layout_height="wrap_content"
+	        android:layout_marginLeft="@dimen/activity_horizontal_margin"
+	        android:layout_marginRight="@dimen/activity_horizontal_margin"
+	        android:layout_weight="1.0" />
+    </LinearLayout>
 
     <!--
          This FrameLayout insets its children based on system windows using

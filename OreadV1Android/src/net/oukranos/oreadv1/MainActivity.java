@@ -1,7 +1,11 @@
 package net.oukranos.oreadv1;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import net.oukranos.oreadv1.controller.MainController;
 import net.oukranos.oreadv1.types.ControllerState;
+import net.oukranos.oreadv1.types.WaterQualityData;
 import net.oukranos.oreadv1.util.SystemUiHider;
 
 import android.annotation.TargetApi;
@@ -11,6 +15,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.ListView;
 
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
@@ -48,6 +53,7 @@ public class MainActivity extends Activity {
 	private SystemUiHider mSystemUiHider;
 	
 	private MainController _mainController = null;
+	private List<WaterQualityData> _sensorData = null;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -62,6 +68,9 @@ public class MainActivity extends Activity {
 
 		final View controlsView = findViewById(R.id.fullscreen_content_controls);
 		final View contentView = findViewById(R.id.fullscreen_content);
+		final View listView = findViewById(R.id.sensor_data_list);
+		
+		_sensorData = new ArrayList<WaterQualityData>();
 
 		// Set up an instance of SystemUiHider to control the system UI for
 		// this activity.
@@ -109,16 +118,19 @@ public class MainActivity extends Activity {
 				});
 
 		// Set up the user interaction to manually show or hide the system UI.
-		contentView.setOnClickListener(new View.OnClickListener() {
+		contentView.setOnLongClickListener(new View.OnLongClickListener() {
 			@Override
-			public void onClick(View view) {
+			public boolean onLongClick(View view) {
 				if (TOGGLE_ON_CLICK) {
 					mSystemUiHider.toggle();
 				} else {
 					mSystemUiHider.show();
 				}
+				return false;
 			}
 		});
+		
+		((ListView) listView).setAdapter(new SensorDataAdapter(this, _sensorData));
 
 		// Upon interacting with UI controls, delay any scheduled hide()
 		// operations to prevent the jarring behavior of controls going away
