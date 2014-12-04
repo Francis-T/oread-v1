@@ -71,15 +71,20 @@ public class SensorArrayController extends AbstractController implements SensorE
 		Sensor sensors[] = { _phSensor, _do2Sensor, _ecSensor };
 		
 		for (Sensor s : sensors) {
-			if ( readSensor(s) != Status.OK ) {
-				OLog.err("Failed to receive from " + s.getName());
-				return Status.FAILED;
-			}
-			
-			ReceiveStatus rs = s.getReceiveDataStatus();
-			if ((rs == ReceiveStatus.COMPLETE) || (rs == ReceiveStatus.PARTIAL)) {
-				if (s.getReceivedDataSize() > 0) {
-					OLog.info(new String(s.getReceivedData()).trim());
+			if (this.getState() == ControllerState.READY) {
+				if ( readSensor(s) != Status.OK ) {
+					s.clearReceivedData();
+					OLog.err("Failed to receive from " + s.getName());
+					return Status.FAILED;
+				}
+				
+				ReceiveStatus rs = s.getReceiveDataStatus();
+				if ((rs == ReceiveStatus.COMPLETE) || (rs == ReceiveStatus.PARTIAL)) {
+					if (s.getReceivedDataSize() > 0) {
+						OLog.info(new String(s.getReceivedData()).trim());
+						
+						s.getParsedData(_sensorData);
+					}
 				}
 			}
 			s.clearReceivedData();
@@ -304,6 +309,8 @@ public class SensorArrayController extends AbstractController implements SensorE
 			return _dataBuffer;
 		}
 		
+		public abstract Status getParsedData(WaterQualityData container);
+		
 		public int getReceivedDataSize() {
 			return ( _dataOffset < 0 ? 0 : _dataOffset );
 		}
@@ -360,6 +367,36 @@ public class SensorArrayController extends AbstractController implements SensorE
 			return Status.FAILED;
 		}
 
+		@Override
+		public Status getParsedData(WaterQualityData container) {
+			if (container == null) {
+				OLog.err("Data container is null for " + this.getName());
+				return Status.FAILED;
+			}
+			
+			final byte[] data = this.getReceivedData();
+			if (data == null) {
+				OLog.err("Received data buffer is null for " + this.getName());
+				return Status.FAILED;
+			}
+			final String dataStr = new String(data).trim();
+			final String dataStrSplit[] = dataStr.split(" ");
+			final int splitNum = dataStrSplit.length;
+			
+			if (splitNum != 2) {
+				OLog.err("Parsing failed " + this.getName());
+				return Status.FAILED;
+			}
+			
+			try {
+				container.pH = Double.parseDouble(dataStrSplit[1]);
+			} catch (NumberFormatException e) {
+				container.pH = -1.0;
+			}
+			
+			return Status.OK;
+		}
+
 	}
 	
 	private class DissolvedOxygenSensor extends Sensor {
@@ -383,6 +420,36 @@ public class SensorArrayController extends AbstractController implements SensorE
 		
 		public Status calibrate() {
 			return send(CALIBRATE_DO_CMD_STR.getBytes());
+		}
+
+		@Override
+		public Status getParsedData(WaterQualityData container) {
+			if (container == null) {
+				OLog.err("Data container is null for " + this.getName());
+				return Status.FAILED;
+			}
+			
+			final byte[] data = this.getReceivedData();
+			if (data == null) {
+				OLog.err("Received data buffer is null for " + this.getName());
+				return Status.FAILED;
+			}
+			final String dataStr = new String(data).trim();
+			final String dataStrSplit[] = dataStr.split(" ");
+			final int splitNum = dataStrSplit.length;
+			
+			if (splitNum != 2) {
+				OLog.err("Parsing failed " + this.getName());
+				return Status.FAILED;
+			}
+		
+			try {
+				container.dissolved_oxygen = Double.parseDouble(dataStrSplit[1]);
+			} catch (NumberFormatException e) {
+				container.dissolved_oxygen = -1.0;
+			}
+			
+			return Status.OK;
 		}
 	}
 	
@@ -414,6 +481,55 @@ public class SensorArrayController extends AbstractController implements SensorE
 		public Status calibrate() {
 			/* TODO Add other calibration modes here */
 			return send(CALIBRATE_EC_DEFAULT_CMD_STR.getBytes());
+		}
+
+		@Override
+		public Status getParsedData(WaterQualityData container) {
+			if (container == null) {
+				OLog.err("Data container is null for " + this.getName());
+				return Status.FAILED;
+			}
+			
+			final byte[] data = this.getReceivedData();
+			if (data == null) {
+				OLog.err("Received data buffer is null for " + this.getName());
+				return Status.FAILED;
+			}
+			final String dataStr = new String(data).trim();
+			final String dataStrSplit[] = dataStr.split(" ");
+			final int splitNum = dataStrSplit.length;
+			if ((splitNum <= 0) || (splitNum > 2)) {
+				OLog.err("Parsing failed " + this.getName());
+				return Status.FAILED;
+			}
+			
+			final String econdSplit[] = dataStrSplit[1].split(",");
+			final int ecSplitNum = econdSplit.length;
+			if (ecSplitNum != 3) {
+				OLog.err("Parsing failed " + this.getName());
+				return Status.FAILED;
+			}
+			
+			try {
+				container.conductivity = Double.parseDouble(econdSplit[0]);
+			} catch (NumberFormatException e) {
+				container.conductivity = -1.0;
+			}
+			
+			try {
+				container.tds = Double.parseDouble(econdSplit[1]);
+			} catch (NumberFormatException e) {
+				container.tds = -1.0;
+			}
+			
+			try {
+				container.salinity = Double.parseDouble(econdSplit[2]); 
+			} catch (NumberFormatException e) {
+				container.salinity = -1.0;
+			}
+			
+			
+			return Status.OK;
 		}
 	}
 	

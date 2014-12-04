@@ -26,7 +26,8 @@
         android:id="@+id/fullscreen_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingTop="75dip">
 	    <ListView
 	        android:id="@+id/sensor_data_list"
 	        android:layout_width="0dip"

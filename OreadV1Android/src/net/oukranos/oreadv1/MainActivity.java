@@ -4,12 +4,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 import net.oukranos.oreadv1.controller.MainController;
+import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
 import net.oukranos.oreadv1.types.ControllerState;
+import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
+import net.oukranos.oreadv1.util.OLog;
 import net.oukranos.oreadv1.util.SystemUiHider;
 
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -23,7 +27,7 @@ import android.widget.ListView;
  * 
  * @see SystemUiHider
  */
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements MainControllerEventHandler {
 	/**
 	 * Whether or not the system UI should be auto-hidden after
 	 * {@link #AUTO_HIDE_DELAY_MILLIS} milliseconds.
@@ -53,6 +57,8 @@ public class MainActivity extends Activity {
 	private SystemUiHider mSystemUiHider;
 	
 	private MainController _mainController = null;
+	private PullDataTask _pullDataTask = null;
+	private SensorDataAdapter _sensorDataAdapter = null;
 	private List<WaterQualityData> _sensorData = null;
 
 	@Override
@@ -61,6 +67,7 @@ public class MainActivity extends Activity {
 		
 		if (_mainController == null) {
 			_mainController = MainController.getInstance(this);
+			_mainController.setEventHandler(this);
 			_mainController.initialize();
 		}
 
@@ -68,7 +75,14 @@ public class MainActivity extends Activity {
 
 		final View controlsView = findViewById(R.id.fullscreen_content_controls);
 		final View contentView = findViewById(R.id.fullscreen_content);
-		final View listView = findViewById(R.id.sensor_data_list);
+		final View listView = contentView.findViewById(R.id.sensor_data_list);
+		
+		if (listView == null) {
+			OLog.warn("ListView is NULL");
+			_mainController.destroy();
+			_mainController = null;
+			return;
+		}
 		
 		_sensorData = new ArrayList<WaterQualityData>();
 
@@ -130,7 +144,9 @@ public class MainActivity extends Activity {
 			}
 		});
 		
-		((ListView) listView).setAdapter(new SensorDataAdapter(this, _sensorData));
+		_sensorDataAdapter = new SensorDataAdapter(this, _sensorData);
+		((ListView) listView).setAdapter(_sensorDataAdapter);
+		OLog.info("Adapter set");
 
 		// Upon interacting with UI controls, delay any scheduled hide()
 		// operations to prevent the jarring behavior of controls going away
@@ -202,6 +218,20 @@ public class MainActivity extends Activity {
 		return;
 	}
 
+	@Override
+	public void onDataAvailable() {
+		/* Start a pull data task */
+		if (_pullDataTask != null) {
+			OLog.err("An old pull data task still exists");
+			return;
+		}
+		
+		_pullDataTask = new PullDataTask();
+		_pullDataTask.execute();
+		
+		return;
+	}
+
 	/**
 	 * Touch listener to use for in-layout UI controls to delay hiding the
 	 * system UI. This is to prevent the jarring behavior of controls going away
@@ -232,5 +262,65 @@ public class MainActivity extends Activity {
 	private void delayedHide(int delayMillis) {
 		mHideHandler.removeCallbacks(mHideRunnable);
 		mHideHandler.postDelayed(mHideRunnable, delayMillis);
+	}
+	
+	/* Inner classes */
+	private class PullDataTask extends AsyncTask<Void, Void, TaskStatus> {
+
+		@Override
+		protected TaskStatus doInBackground(Void... params) {
+			OLog.info("Pull data task started.");
+			if (_mainController != null) {
+				if (_sensorData == null) {
+					OLog.err("Sensor data list is null");
+					return TaskStatus.FAILED;
+				}
+				
+				if (_sensorDataAdapter == null) {
+					OLog.err("Sensor data adapter is null");
+					return TaskStatus.FAILED;
+				}
+				
+				/* Pull data from the MainController */
+				WaterQualityData data = new WaterQualityData(0); // TODO This ID should be a variable instead
+				if ( _mainController.getData(data) != net.oukranos.oreadv1.types.Status.OK) {
+					OLog.err("Failed to pull data");
+					return TaskStatus.FAILED;
+				}
+				_sensorData.add(data);
+				
+				
+				if (_sensorData.size() > 5) {
+					/* If we have more than ten elements in the list, discard the first element */ 
+					_sensorData.remove(0);
+				}
+				
+				WaterQualityData d = _sensorData.get(_sensorData.size()-1);
+				OLog.info("SensorData size: " + _sensorData.size());
+				OLog.info(  "   pH: " + d.pH +
+							"  DO2: " + d.dissolved_oxygen +
+							" COND: " + d.conductivity);
+			}
+			
+			if (_pullDataTask != null) {
+				_pullDataTask = null;
+			}
+
+			OLog.info("Pull data task finished.");
+			return TaskStatus.OK;
+		}
+		
+		protected void onPostExecute(TaskStatus result) {
+			if (result == TaskStatus.OK) {
+				if (_sensorDataAdapter != null) {
+					_sensorDataAdapter.notifyDataSetChanged();
+				}
+			}
+		}
+		
+	}
+	
+	private enum TaskStatus {
+		UNKNOWN, OK, ALREADY_STARTED, FAILED
 	}
 }

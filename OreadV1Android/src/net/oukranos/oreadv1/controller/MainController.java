@@ -2,6 +2,7 @@ package net.oukranos.oreadv1.controller;
 
 import android.app.Activity;
 import net.oukranos.oreadv1.interfaces.AbstractController;
+import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
@@ -17,6 +18,7 @@ public class MainController extends AbstractController {
 	private BluetoothController _bluetoothController = null;
 	private SensorArrayController _sensorArrayController = null;
 	
+	private MainControllerEventHandler _eventHandler = null;
 	private Activity _parentActivity = null;
 
 	private MainController(Activity parent) {
@@ -111,6 +113,26 @@ public class MainController extends AbstractController {
 		return returnStatus;
 	}
 	
+	public void setEventHandler(MainControllerEventHandler handler) {
+		_eventHandler = handler;
+	}
+	
+	public Status getData(WaterQualityData container) {
+		if ( container == null ) {
+			OLog.err("Data container is null");
+			return Status.FAILED;
+		}
+		
+		if ( _waterQualityData == null ) {
+			OLog.err("Data source is null");
+			return Status.FAILED;
+		}
+		
+		WaterQualityData.copyData(container, _waterQualityData);
+		
+		return Status.OK;
+	}
+	
 	
 	private void initializeRunTaskLoop() {
 		if (_controllerRunTask == null) {
@@ -198,7 +220,9 @@ public class MainController extends AbstractController {
 				if ( _bluetoothController.getState() == ControllerState.ACTIVE ) {
 					/* Pull data from water quality sensors */
 					OLog.info("Reading Sensor Data...");
-					_sensorArrayController.readSensorData();
+					if ( _sensorArrayController.readSensorData() == Status.OK ) {
+						_eventHandler.onDataAvailable();
+					}
 				} else {
 					startBluetoothController();
 				}

@@ -1,5 +1,6 @@
 package net.oukranos.oreadv1;
 
+import java.util.Date;
 import java.util.List;
 
 import net.oukranos.oreadv1.types.WaterQualityData;
@@ -72,7 +73,8 @@ public class SensorDataAdapter extends BaseAdapter {
 		
 		if (data != null) {
 			if (timeText != null) {
-				timeText.setText(Long.toString(data.getTimestamp()));
+//				timeText.setText(Long.toString(data.getTimestamp()));
+				timeText.setText(new Date(data.getTimestamp()).toString());
 			}
 			if (phText != null) {
 				phText.setText(Double.toString(data.pH));

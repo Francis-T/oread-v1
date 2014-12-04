@@ -1,5 +1,7 @@
 package net.oukranos.oreadv1.types;
 
+import net.oukranos.oreadv1.util.OLog;
+
 public class WaterQualityData {
 	private int id = 0;
 	private long timestamp = 0;
@@ -35,5 +37,29 @@ public class WaterQualityData {
 	public void updateTimestamp() {
 		this.timestamp = System.currentTimeMillis();
 		return;
+	}
+	
+	public static Status copyData(WaterQualityData destData, 
+			WaterQualityData sourceData) {
+		if (destData == null) {
+			OLog.err("Destination object is null");
+			return Status.FAILED;
+		}
+		
+		if (sourceData == null) {
+			OLog.err("Source object is null");
+			return Status.FAILED;
+		}
+
+		destData.id 				= sourceData.id;
+		destData.pH 				= sourceData.pH;
+		destData.dissolved_oxygen 	= sourceData.dissolved_oxygen;
+		destData.conductivity 		= sourceData.conductivity;
+		destData.temperature 		= sourceData.temperature;
+		destData.tds 				= sourceData.tds;
+		destData.salinity 			= sourceData.salinity;
+		destData.updateTimestamp();
+		
+		return Status.OK;
 	}
 }
