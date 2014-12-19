@@ -704,6 +704,7 @@ int msh_handleSensCalibrate(char* pMsg)
 {
 	int* pSensId;
 	int* pCalCmdId;
+        int iCmdLen;
 	char aCalCmd[3];
 	char aParams[5];
 	
@@ -725,8 +726,10 @@ int msh_handleSensCalibrate(char* pMsg)
 		return STATUS_FAILED;
 	}
 
+	utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
 	utl_getField(_tSensor[*pSensId].aCalCmdStr, aParams, *pCalCmdId, ' ');
-	utl_strCpy(_aTxBuf, aParams, 2);
+        iCmdLen = utl_strLen(aParams);
+	utl_strCpy(_aTxBuf, aParams, iCmdLen);
 	
 	dbg_print(MOD_NAME, "Send Buffer Contents", _aTxBuf);
 	tsk_addTask(&_tTaskQueue, TASK_SENS_SEND, pSensId);
