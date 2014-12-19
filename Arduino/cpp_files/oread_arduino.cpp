@@ -8,6 +8,8 @@
 /** ************************************************************************ **/
 /** ****************************** ARDUINO HEADER ************************** **/
 /** ************************************************************************ **/
+#include <OneWire.h>
+
 #ifndef TRUE
 #define TRUE				1
 #endif
@@ -17,7 +19,7 @@
 #endif
 
 #define TASK_QUEUE_SIZE		5
-#define SENSOR_LIST_SIZE	3
+#define SENSOR_LIST_SIZE	4
 
 #define SENS_NAME_LEN_MAX	10
 #define SENS_BUF_MAX		32
@@ -61,6 +63,8 @@ typedef struct taskQueue
 	int iLen;
 } tTaskQueue_t;
 
+typedef int (*fSensReadFunc_t)(int sensId);
+
 typedef struct sensorInfo
 {
 	const char* aName;
@@ -71,6 +75,7 @@ typedef struct sensorInfo
 	int iBufOffset;
 	int bIsComplete;
 	char* aCalCmdStr;
+	fSensReadFunc_t fReadFunc;
 } tSensor_t;
 
 char _aRxBuf[RX_BUF_MAX];
@@ -100,6 +105,7 @@ int sens_activateSensor(int iSensId);
 int sens_deactivateSensor(int iSensId);
 int sens_send(int iSensId, char* pCmd);
 int sens_read(int iSensId);
+int sens_tempRead(int iSensId);
 
 int tsk_initQueue(tTaskQueue_t* pQueue);
 void tsk_displayQueue(tTaskQueue_t* pQueue);
@@ -134,9 +140,10 @@ tQueueTask_t _tTasks[TASK_QUEUE_SIZE];
 tTaskQueue_t _tTaskQueue;
 tSensor_t _tSensor[SENSOR_LIST_SIZE] = 
 {
-	{ "pH", 10, SENSOR_STOPPED, Serial1, &aSensDataBuf[0][0], 0, FALSE, "S F T R" },
-	{ "DO", 11, SENSOR_STOPPED, Serial2, &aSensDataBuf[1][0], 0, FALSE, "M R" },
-	{ "EC", 12, SENSOR_STOPPED, Serial3, &aSensDataBuf[2][0], 0, FALSE, "Z30 Z2 R" }
+	{ "pH", 10, SENSOR_STOPPED, Serial1, &aSensDataBuf[0][0], 0, FALSE,  "S F T R", sens_read },
+	{ "DO", 11, SENSOR_STOPPED, Serial2, &aSensDataBuf[1][0], 0, FALSE,      "M R", sens_read },
+	{ "EC", 12, SENSOR_STOPPED, Serial3, &aSensDataBuf[2][0], 0, FALSE, "Z30 Z2 R", sens_read },
+	{ "TM",  9, SENSOR_STOPPED, Serial1, &aSensDataBuf[3][0], 0, FALSE,       NULL, sens_tempRead }
 };
 
 void setup()
@@ -347,7 +354,7 @@ int exec_sensReadTask(int iSensIdx)
 		return STATUS_OK;
 	}
 	
-	iRet = sens_read(iSensIdx);
+	iRet = _tSensor[iSensIdx].fReadFunc(iSensIdx);
 	if (iRet == STATUS_OK_INC)
 	{
 		dbg_print(FUNC_NAME, "Partial sensor read", NULL);
@@ -619,6 +626,124 @@ int sens_read(int iSensId)
 	
 	return STATUS_OK_INC;
 }
+
+int sens_tempRead(int iSensId)
+{
+    OneWire tTempSensor(_tSensor[iSensId].iPin);
+    byte aData[12];
+    byte aAddr[8];
+    byte bType = 0;
+    byte bPresent = 0;
+    byte bCfg = 0;
+    float fCelsius = 0.0f;
+    float fFahrenheit = 0.0f;
+    int i = 0;
+    int16_t raw = 0;
+    
+    if ( !tTempSensor.search(aAddr) ) { 
+        // If sensor is not connected or broken, address will not be detected
+        dbg_print(MOD_NAME, "No more addresses", _tSensor[iSensId].aName);
+        tTempSensor.reset_search();
+        delay(250);
+        return STATUS_FAILED;
+    }
+
+    /* Check if the address is valid */    
+    if (OneWire::crc8(aAddr, 7) != aAddr[7]) {
+        dbg_print(MOD_NAME, "CRC is not valid", _tSensor[iSensId].aName);
+        return STATUS_FAILED;
+    }
+    
+    /* Check the type of transistor
+     *  The first ROM byte indicates which chip */
+    switch (aAddr[0]) {
+        case 0x10:
+            // @LOG "  Chip = DS18S20"
+            bType = 1;
+            break;
+        case 0x28:
+            // @LOG "  Chip = DS18B20"
+            bType = 0;
+            break;
+        case 0x22:
+            // @LOG "  Chip = DS1822"
+            bType = 0;
+            break;
+        default:
+            dbg_print(MOD_NAME, "Device is not a DS18x20 family device.", _tSensor[iSensId].aName);
+            return STATUS_FAILED;
+    }
+    
+    tTempSensor.reset();
+    tTempSensor.select(aAddr);  // obtains address of sensor 
+    tTempSensor.write(0x44, 1); // start conversion, with parasite power on at the end
+
+    delay(1000);     // maybe 750ms is enough, maybe not
+    // we might do a tTempSensor.depower() here, but the reset will take care of it.
+
+    bPresent = tTempSensor.reset();
+    tTempSensor.select(aAddr);    
+    tTempSensor.write(0xBE);         // Read Scratchpad
+
+
+    for ( i = 0; i < 9; i++) {         // we need 9 bytes
+        aData[i] = tTempSensor.read(); // gets aData from sensor
+    }
+
+    // Convert the aData to actual temperature
+    // because the result is a 16 bit signed integer, it should
+    // be stored to an "int16_t" type, which is always 16 bits
+    // even when compiled on a 32 bit processor.
+    raw = (aData[1] << 8) | aData[0];
+    if (bType) {
+        raw = raw << 3; // 9 bit resolution default
+        if (aData[7] == 0x10) {
+            // "count remain" gives full 12 bit resolution
+            raw = (raw & 0xFFF0) + 12 - aData[6];
+        }
+    } else {
+        bCfg = (aData[4] & 0x60);
+        // at lower res, the low bits are undefined, so let's zero them
+        if (bCfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
+        else if (bCfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+        else if (bCfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+        //// default is 12 bit resolution, 750 ms conversion time
+    }
+    fCelsius = (float)raw / 16.0; // prints out temperature
+    fFahrenheit = fCelsius * 1.8 + 32.0; // converts
+    
+    dbg_print(MOD_NAME, "Sensor data completed", _tSensor[iSensId].aName);
+    
+    /* Output the temperature to the receive buffer */
+    utl_clearBuffer(_aRxBuf, sizeof(_aRxBuf[0]), _iRxBufLen);
+    dtostrf(fCelsius, 10, 2, _tSensor[iSensId].aBuf);
+    
+    /* Copy into Rx Buf */
+    utl_strCpy(_aRxBuf, "TEMP: ", utl_strLen("TEMP: "));
+    
+    for (i = 0; i < utl_strLen(_tSensor[iSensId].aBuf); i++)
+    {
+        if (_tSensor[iSensId].aBuf[i] != ' ')
+        {
+          break;
+        }
+    }
+    
+    utl_strCat(_aRxBuf, _tSensor[iSensId].aBuf+i, utl_strLen(_tSensor[iSensId].aBuf+i));
+				   
+    _tSensor[iSensId].iBufOffset = 0;
+    _tSensor[iSensId].bIsComplete = FALSE;
+		
+    /* Update the current known Rx Buffer Length */
+    _iRxBufLen = utl_strLen(_tSensor[iSensId].aBuf+i);
+
+    /* Display the data to the user */
+    Serial.println(_aRxBuf);
+        
+    return STATUS_OK;
+}
+
+
 #undef MOD_NAME
 
 #ifndef __USE_ARDUINO__
@@ -903,6 +1028,13 @@ int utl_strLen(const char* s1)
 int utl_strCpy(char* pDest, const char* pSrc, int iLen)
 {
 	strncpy(pDest, pSrc, iLen);
+	
+	return STATUS_OK;
+}
+
+int utl_strCat(char* pDest, const char* pSrc, int iLen)
+{
+	strncat(pDest, pSrc, iLen);
 	
 	return STATUS_OK;
 }
