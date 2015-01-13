@@ -65,6 +65,7 @@ public class SensorDataAdapter extends BaseAdapter {
 		TextView phText = (TextView) v.findViewById(R.id.txt_ph);
 		TextView doText = (TextView) v.findViewById(R.id.txt_do2);
 		TextView ecText = (TextView) v.findViewById(R.id.txt_econd);
+		TextView tempText = (TextView) v.findViewById(R.id.txt_temp);
 		
 		WaterQualityData data = null;
 		if (_sensorDataList != null) {
@@ -84,6 +85,9 @@ public class SensorDataAdapter extends BaseAdapter {
 			}
 			if (ecText != null) {
 				ecText.setText(Double.toString(data.conductivity));
+			}
+			if (tempText != null) {
+				tempText.setText(Double.toString(data.temperature) + " deg C");
 			}
 		}
 		

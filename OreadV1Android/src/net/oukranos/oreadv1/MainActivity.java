@@ -299,7 +299,8 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 				OLog.info("SensorData size: " + _sensorData.size());
 				OLog.info(  "   pH: " + d.pH +
 							"  DO2: " + d.dissolved_oxygen +
-							" COND: " + d.conductivity);
+							" COND: " + d.conductivity + 
+							" TEMP: " + d.temperature);
 			}
 			
 			if (_pullDataTask != null) {

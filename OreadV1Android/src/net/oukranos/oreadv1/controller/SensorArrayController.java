@@ -19,6 +19,7 @@ public class SensorArrayController extends AbstractController implements SensorE
 	private PHSensor _phSensor = null;
 	private DissolvedOxygenSensor _do2Sensor = null;
 	private ConductivitySensor _ecSensor = null;
+	private TemperatureSensor _tempSensor = null;
 	
 	private byte[] _tempDataBuffer = new byte[512];
 	private int _tempDataOffset = 0;
@@ -58,6 +59,10 @@ public class SensorArrayController extends AbstractController implements SensorE
 		if (_ecSensor == null) {
 			_ecSensor = new ConductivitySensor(_bluetoothController);
 		}
+
+		if (_tempSensor == null) {
+			_tempSensor = new TemperatureSensor(_bluetoothController);
+		}
 		
 		this.setState(ControllerState.READY);
 		return Status.OK;	
@@ -68,7 +73,7 @@ public class SensorArrayController extends AbstractController implements SensorE
 			return Status.FAILED;
 		}
 		
-		Sensor sensors[] = { _phSensor, _do2Sensor, _ecSensor };
+		Sensor sensors[] = { _phSensor, _do2Sensor, _ecSensor, _tempSensor };
 		
 		for (Sensor s : sensors) {
 			if (this.getState() == ControllerState.READY) {
@@ -528,6 +533,61 @@ public class SensorArrayController extends AbstractController implements SensorE
 				container.salinity = -1.0;
 			}
 			
+			
+			return Status.OK;
+		}
+	}
+	
+
+	private class TemperatureSensor extends Sensor {
+		private static final String READ_CMD_STR = "READ 3";
+		private static final String INFO_CMD_STR = "CMD 3 X";
+		private static final String CALIBRATE_DO_CMD_STR = "CMD 3 X";
+
+		public TemperatureSensor(BluetoothController bluetooth) {
+			super(bluetooth);
+			this.setName("Temp Sensor");
+		}
+
+		@Override
+		public Status read() {
+			return send(READ_CMD_STR.getBytes());
+		}
+		
+		public Status getInfo() {
+			return send(INFO_CMD_STR.getBytes());
+		}
+		
+		public Status calibrate() {
+			return send(CALIBRATE_DO_CMD_STR.getBytes());
+		}
+
+		@Override
+		public Status getParsedData(WaterQualityData container) {
+			if (container == null) {
+				OLog.err("Data container is null for " + this.getName());
+				return Status.FAILED;
+			}
+			
+			final byte[] data = this.getReceivedData();
+			if (data == null) {
+				OLog.err("Received data buffer is null for " + this.getName());
+				return Status.FAILED;
+			}
+			final String dataStr = new String(data).trim();
+			final String dataStrSplit[] = dataStr.split(" ");
+			final int splitNum = dataStrSplit.length;
+			
+			if (splitNum != 2) {
+				OLog.err("Parsing failed " + this.getName());
+				return Status.FAILED;
+			}
+		
+			try {
+				container.temperature = Double.parseDouble(dataStrSplit[1]);
+			} catch (NumberFormatException e) {
+				container.temperature = -1.0;
+			}
 			
 			return Status.OK;
 		}

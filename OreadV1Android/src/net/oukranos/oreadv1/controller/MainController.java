@@ -4,6 +4,7 @@ import android.app.Activity;
 import net.oukranos.oreadv1.interfaces.AbstractController;
 import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
 import net.oukranos.oreadv1.types.ControllerState;
+import net.oukranos.oreadv1.types.HttpEncWaterQualityData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
 import net.oukranos.oreadv1.util.OLog;
@@ -17,6 +18,7 @@ public class MainController extends AbstractController {
 	
 	private BluetoothController _bluetoothController = null;
 	private SensorArrayController _sensorArrayController = null;
+	private NetworkController _networkController = null;
 	
 	private MainControllerEventHandler _eventHandler = null;
 	private Activity _parentActivity = null;
@@ -128,7 +130,7 @@ public class MainController extends AbstractController {
 			return Status.FAILED;
 		}
 		
-		WaterQualityData.copyData(container, _waterQualityData);
+		container = new WaterQualityData(_waterQualityData);
 		
 		return Status.OK;
 	}
@@ -161,13 +163,16 @@ public class MainController extends AbstractController {
 	}
 	
 	private Status initializeSubControllers(Activity parent) {
-		/* TODO Initialize all sub-controllers here */
+		/* Initialize all sub-controllers here */
 		_bluetoothController = BluetoothController.getInstance(parent, null);
+		_networkController = NetworkController.getInstance(parent);
 		
 		_waterQualityData = new WaterQualityData(0);
 		_sensorArrayController = SensorArrayController.getInstance(_bluetoothController, _waterQualityData);
 		
+		
 		_sensorArrayController.initialize();
+		_networkController.initialize();
 		_bluetoothController.initialize();
 		
 		return Status.OK;
@@ -210,10 +215,12 @@ public class MainController extends AbstractController {
 		public void run() {
 			OLog.info("Run Task started");
 			while ( getState() == ControllerState.READY ) {
-				/* Check state of BluetoothController */
-				/* TODO Check state of NetworkController */
-				
+				/* TODO Check state of BluetoothController */
 				/* TODO Check state of SensorController */
+				/* Check state of NetworkController */
+				if (_networkController.getState() != ControllerState.READY) {
+					_networkController.start();
+				}
 				
 				
 				/* TODO CLEANUP LOGIC IN THIS PART */
@@ -228,6 +235,10 @@ public class MainController extends AbstractController {
 				}
 				
 				/* TODO Upload sensor data to server */
+				if (_networkController.getState() == ControllerState.READY) {
+					_networkController.send("http://www.dummyurl.net/",
+							new HttpEncWaterQualityData(_waterQualityData));
+				}
 				
 				/* TODO Check state of CameraController */
 				/* TODO Pull data from the camera */
@@ -242,6 +253,8 @@ public class MainController extends AbstractController {
 					continue;
 				}
 			}
+			_networkController.stop();
+			_networkController.destroy();
 			_bluetoothController.destroy();
 			OLog.info("Run Task finished");
 		}
