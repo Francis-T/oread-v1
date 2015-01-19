@@ -1,1034 +1,700 @@
-#ifndef __OREAD_CPP__
-#define __OREAD_CPP__
+#ifndef __OREAD_ARDUINO_C__
+#define __OREAD_ARDUINO_C__
+
 #define __USE_ARDUINO__
 
 #ifndef __USE_ARDUINO__
 #include "oread_arduino.h"
-#else
-/** ************************************************************************ **/
-/** ****************************** ARDUINO HEADER ************************** **/
-/** ************************************************************************ **/
+#endif
+
 #ifndef TRUE
-#define TRUE				1
+#define TRUE    1
 #endif
 
 #ifndef FALSE
-#define FALSE				0
+#define FALSE   0
 #endif
 
-#define TASK_QUEUE_SIZE		5
-#define SENSOR_LIST_SIZE	3
+#define SZ_RX_BUFFER    100
+#define SZ_TX_BUFFER    100
+#define EOS             '\0'
+#define MATCHED         1
+#define NOT_MATCHED     0
+#define STATUS_OK_INC   2
+#define STATUS_OK       1
+#define STATUS_FAILED   0
+#define status_t        int
 
-#define SENS_NAME_LEN_MAX	10
-#define SENS_BUF_MAX		32
-#define RX_BUF_MAX	 		100
-#define TX_BUF_MAX	 		512
+#define SENSOR_READ_TIMEOUT 5000
+#define SENSOR_LIST_SIZE    5
+#define SENS_BUF_MAX        32
 
-#define SENSOR_TIMEOUT		5
+#define DUMMY_SENSOR_ID     0
 
-#define STATUS_OK		0
-#define STATUS_OK_INC	1
-#define STATUS_FAILED	-1
+/** Type Definitions **/
+/* enum for the different Sensor States */
+typedef enum sensorStates {  SENSOR_STARTED,
+                             SENSOR_READING,
+                             SENSOR_STOPPED } sensorState_t;
 
-#define SENS_DATA_TERM_CHAR	'\r'
+/* typedef for sensor read functions */
+typedef status_t (*fSensReadFunc_t)(int sensId);
 
-#define RETRY_COUNT		5
-
-typedef enum taskTypes {	TASK_UNKNOWN,
-							TASK_USER_READ,
-							TASK_SENS_READ,
-							TASK_USER_SEND,
-							TASK_SENS_SEND,
-							TASK_SENS_CALIB,
-							TASK_SENS_ACTIVATE,
-							TASK_SENS_DEACTIVATE,
-							TASK_DEBUG_MODE_TOGGLE } taskType_t;
-				
-typedef enum sensorStates {	SENSOR_STARTED,
-					 		SENSOR_READING,
-					 		SENSOR_STOPPED } sensorState_t;
-
-typedef struct queueTask
-{
-	int iTaskType;
-	void* vParams;
-	struct queueTask *pNext;
-} tQueueTask_t;
-
-typedef struct taskQueue
-{
-	tQueueTask_t* pBegin;
-	int iLen;
-} tTaskQueue_t;
-
+/* typedef for the Sensor Info struct */
 typedef struct sensorInfo
 {
-	const char* aName;
-	int iPin;
-	sensorState_t eState;
-	HardwareSerial aSerial;
-	char* aBuf;
-	int iBufOffset;
-	int bIsComplete;
-	char* aCalCmdStr;
+    const char* aName;
+    int iPin;
+    sensorState_t eState;
+    HardwareSerial aSerial;
+    char* aBuf;
+    int iBufOffset;
+    int bIsComplete;
+    long lReadStartTime;
 } tSensor_t;
 
-char _aRxBuf[RX_BUF_MAX];
-int _iRxBufLen = 0;
-char _aTxBuf[TX_BUF_MAX];
-int _iTxBufLen = 0;
+/** Global Variables **/
+int  _debugMode = FALSE;
+char aSensDataBuf[SENSOR_LIST_SIZE][SENS_BUF_MAX];
 
-char* taskType_tbl[9] = { 	"Unknown", 
-							"User Read",
-							"Sensor Read",
-							"User Send",
-							"Sensor Send",
-							"Sensor Calibrate",
-							"Sensor Activate",
-							"Sensor Deactivate",
-							"Debug Mode Toggle" };
+/* Tx/Rx Buffer */
+char _aRxBuffer[SZ_RX_BUFFER];
+int  _iRxBufferLen = 0;
+char _aTxBuffer[SZ_TX_BUFFER];
+int  _iTxBufferLen = 0;
 
-int cmh_recvMessage();
+// #define dbg_print(x,y,z) \
+// { \
+//    if ( (_debugMode == 1) && (x != NULL) && (y != NULL) && (z != NULL) ) { \
+//      char aMessage[200]; \
+//      memset(aMessage, EOS, sizeof(char) * 200); \
+//      sprintf(aMessage, "[%s] %s: %s", x, y, z); \
+//      Serial.println(aMessage); \
+//    } \
+// }
 
-void msh_handleMessage(char* pMsg);
-int msh_handleSensRead(char* pMsg);
-int msh_handleSensCalibrate(char* pMsg);
-int msh_handleSensCmd(char* pMsg);
-
-int sens_initSensors(void);
-int sens_activateSensor(int iSensId);
-int sens_deactivateSensor(int iSensId);
-int sens_send(int iSensId, char* pCmd);
-int sens_read(int iSensId);
-
-int tsk_initQueue(tTaskQueue_t* pQueue);
-void tsk_displayQueue(tTaskQueue_t* pQueue);
-int tsk_addTask(tTaskQueue_t *pTaskQueue, int iTaskType, void* vParams);
-int tsk_removeTask(tTaskQueue_t *pTaskQueue);
-
-void utl_clearBuffer(void* pBuf, int iSize,  int iLen);
-int utl_compare(const char* s1, const char* s2, int iLen);
-int utl_strLen(const char* s1);
-int utl_strCpy(char* pDest, const char* pSrc, int iLen);
-int utl_atoi(const char* s);
-int utl_getField(char* s1, char* s2, int iTgtField, char cDelim);
-/** ************************************************************************ **/
-/** *********************** END OF ARDUINO HEADER ************************** **/
-/** ************************************************************************ **/
+/* Function declarations */
 void setup();
 void loop();
+
 void serialEventRead(tSensor_t* pSensor, const char* aSerialName);
+void serialEvent1();
+void serialEvent2();
+void serialEvent3();
+
+status_t proc_readSensor(char* pMsg);
+status_t proc_drainWaterReservoir();
+status_t proc_processInput(char* pMsg, int iLen);
+
+status_t sens_atlasRead(int iSensId);
+status_t sens_atlasSendCmd(tSensor_t* pSensor, char* pCmd);
+void sens_dataFinished(tSensor_t* pSensor);
+int sens_initSensors(void);
+
+status_t com_receiveUserInput();
+status_t com_sendResponse();
+
+status_t tmr_manageSensorTimeouts();
+status_t tmr_updateTimeout(tSensor_t* pSensor);
+
+int utl_atoi(const char* s);
+int utl_getField(char* s1, char* s2, int iTgtField, char cDelim);
+int utl_compare(const char* s1, const char* s2, int iLen);
+void utl_clearBuffer(void* pBuf, int iSize,  int iLen);
+int utl_strLen(const char* s1);
+int utl_strCpy(char* pDest, const char* pSrc, int iLen);
+int utl_strCat(char* pDest, const char* pSrc, int iLen);
 
 void dbg_print(const char* pTag, const char* pMsg, const char* pExtra);
 void dbg_printUL(const char* pTag, const char* pMsg, unsigned long ulVal);
 void dbg_printChar(const char* pTag, const char* pMsg, char cVal);
-#endif
 
-unsigned long lLastCommandStart = 0;
-int _iSensTimeout = SENSOR_TIMEOUT;
-int _iRetryCount = RETRY_COUNT;
-int _bIsDebugMode = FALSE;
-
-char aSensDataBuf[SENSOR_LIST_SIZE][SENS_BUF_MAX];
-tQueueTask_t _tTasks[TASK_QUEUE_SIZE];
-tTaskQueue_t _tTaskQueue;
-tSensor_t _tSensor[SENSOR_LIST_SIZE] = 
+/* Lookup table for the sensors */
+tSensor_t _tSensor[SENSOR_LIST_SIZE] =
 {
-	{ "pH", 10, SENSOR_STOPPED, Serial1, &aSensDataBuf[0][0], 0, FALSE, "S F T R" },
-	{ "DO", 11, SENSOR_STOPPED, Serial2, &aSensDataBuf[1][0], 0, FALSE, "M R" },
-	{ "EC", 12, SENSOR_STOPPED, Serial3, &aSensDataBuf[2][0], 0, FALSE, "Z30 Z2 R" }
+    { "XX",  0, SENSOR_STOPPED,  Serial,                NULL, 0, FALSE, 0 }, /* Dummy Sensor */
+    { "pH", 10, SENSOR_STOPPED, Serial1, &aSensDataBuf[0][0], 0, FALSE, 0 },
+    { "DO", 11, SENSOR_STOPPED, Serial2, &aSensDataBuf[1][0], 0, FALSE, 0 },
+    { "EC", 12, SENSOR_STOPPED, Serial3, &aSensDataBuf[2][0], 0, FALSE, 0 },
+    { "TM",  9, SENSOR_STOPPED,  Serial, &aSensDataBuf[3][0], 0, FALSE, 0 }
 };
 
-void setup()
+fSensReadFunc_t _fSensorReadFunc[SENSOR_LIST_SIZE] =
 {
-	Serial.begin(9600);
-	
-	utl_clearBuffer(_tTasks, sizeof(tQueueTask_t), TASK_QUEUE_SIZE);
-	
-	tsk_initQueue(&_tTaskQueue);
-	
-	sens_initSensors();
+    NULL,
+    sens_atlasRead,
+    sens_atlasRead,
+    sens_atlasRead,
+    NULL /* later, sens_temperatureRead() */
+};
+
+/* Input/Output:
+ * e.g.
+ * COMMAND              RESPONSE
+ *  FILL RESERVOIR  -->  OK / ERROR
+ *  DRAIN RESERVOIR -->  OK / ERROR
+ */
+/******************************************************************************/
+/* SEC01: Main Arduino Modules                                                */
+/******************************************************************************/
+#define MOD_NAME "main"
+void setup() {
+    Serial.begin(9600);
+    utl_clearBuffer(_aRxBuffer, sizeof(char), SZ_RX_BUFFER);
+    utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+
+    sens_initSensors();
 }
 
-#define FUNC_NAME "execTask"
-int execTask(int iTaskType, void* vParams)
-{
-	#ifdef __USE_ARDUINO__
-	if (iTaskType != TASK_USER_READ)
-	{
-	#endif
-		dbg_print(FUNC_NAME, "Executing Task", taskType_tbl[iTaskType]);
-		lLastCommandStart = millis();
-	#ifdef __USE_ARDUINO__
-	}
-	#endif
-	
-	switch(iTaskType)
-	{
-		case TASK_USER_READ:
-			cmh_recvMessage();
-			
-			# ifdef __USE_ARDUINO__
-			/** Possibly applicable to non-arduino as well **/
-			if (_iRxBufLen <= 0)
-			{
-				break;
-			}
-			#endif
-			dbg_print(FUNC_NAME, "Receiving User Message", _aRxBuf);
-			
-			msh_handleMessage(_aRxBuf);
-			break;
-		case TASK_SENS_READ:
-			if (exec_sensReadTask(*((int*) vParams)) != STATUS_OK)
-			{
-				dbg_print(FUNC_NAME, "Sensor Read Task Failed!", NULL);
-			}
-			break;
-		case TASK_USER_SEND:
-			break;
-		case TASK_SENS_SEND:
-			if (exec_sensSendTask(*((int*) vParams)) != STATUS_OK)
-			{
-				dbg_print(FUNC_NAME, "Sensor Send Task Failed!", NULL);
-			}
-			break;
-		case TASK_SENS_ACTIVATE:
-			if (exec_sensActivateTask(*((int*) vParams)) != STATUS_OK)
-			{
-				dbg_print(FUNC_NAME, "Sensor Activation Failed!", NULL);
-			}
-			break;
-		case TASK_SENS_DEACTIVATE:
-			if (exec_sensDeactivateTask(*((int*) vParams)) != STATUS_OK)
-			{
-				dbg_print(FUNC_NAME, "Sensor Deactivation Failed!", NULL);
-			}
-			break;
-		case TASK_DEBUG_MODE_TOGGLE:
-			_bIsDebugMode = !_bIsDebugMode;
-			printf("[%s] Debug Mode Set: %s\n", FUNC_NAME, 
-					((_bIsDebugMode > 0) ? "ON" : "OFF" ));
-			break;
-		default:
-			break;
-	}
-	
-	#ifdef __USE_ARDUINO__
-	if ((iTaskType != TASK_USER_READ) || (_iRxBufLen > 0))
-	{
-	#endif
-			dbg_printUL(FUNC_NAME, "Command Execution Time", 
-								   (millis() - lLastCommandStart));
-	#ifdef __USE_ARDUINO__
-	}
-	#endif
-		
-	return STATUS_OK;
+void loop() {
+    if (com_receiveUserInput() != STATUS_OK) {
+        dbg_print(MOD_NAME, "Error", "Failed to receive user input!");
+        return;
+    }
+
+    if (proc_processInput(_aRxBuffer, _iRxBufferLen) != STATUS_OK) {
+        dbg_print(MOD_NAME, "Error", "Failed to process user input!");
+        return;
+    }
+
+    if (com_sendResponse() != STATUS_OK) {
+        dbg_print(MOD_NAME, "Error", "Failed to send response!");
+        return;
+    }
+
+    if (tmr_manageSensorTimeouts() != STATUS_OK) {
+        dbg_print(MOD_NAME, "Error", "Failed to manage sensor timeouts!");
+        return;
+    }
+
+    delay(100);
 }
-#undef FUNC_NAME
-
-void loop()
-{
-	/* Check if queue contains any tasks */
-	if (_tTaskQueue.pBegin == NULL)
-	{
-		/* If not, then add a READ task */
-		tsk_addTask(&_tTaskQueue, TASK_USER_READ, NULL);
-	}
-	
-	/* Execute a task from the queue */
-	if (execTask((_tTaskQueue.pBegin)->iTaskType,
-				 (_tTaskQueue.pBegin)->vParams) == STATUS_OK)
-	{
-		tsk_removeTask(&_tTaskQueue);
-	}
-	
-	/* Sanity delay */
-	delay(100);
-}
-
-void serialEventRead(tSensor_t* pSensor, const char* aSerialName)
-{
-	int iOffs = pSensor->iBufOffset;
-	char cRead = '\0';
-	
-	while ((pSensor->aSerial).available() > 0) 
-	{
-		if (iOffs == 0)
-		{
-			utl_clearBuffer(pSensor->aBuf, sizeof(char), SENS_BUF_MAX);
-			utl_strCpy(pSensor->aBuf, pSensor->aName, 2);
-			pSensor->aBuf[2] = ':';
-			pSensor->aBuf[3] = ' ';
-			iOffs += 4;			
-		}
-		
-		if (iOffs >= SENS_BUF_MAX)
-		{
-			dbg_print(aSerialName, "Sensor buffer is full", pSensor->aName);
-			break;
-		}
-		
-		cRead = (pSensor->aSerial).read();
-
-		if (!(cRead < ' ') && !(cRead > '~'))
-		{
-			pSensor->aBuf[iOffs] = cRead;
-  			pSensor->iBufOffset = iOffs;
-	  		iOffs++;
-		}
-
-		dbg_printChar(aSerialName, "Read Char", cRead);
-		
-		if (cRead == '\r')
-		{
-			dbg_print(aSerialName, "Sensor data completed", pSensor->aBuf);
-			pSensor->bIsComplete = TRUE;
-			iOffs = 0;
-			break;
-		}
-	}
-	
-	return;
-}
-
-void serialEvent1()
-{
-	const int iSensIdx = 0;	/* Sensor Index should match SerialN */
-	serialEventRead(&_tSensor[iSensIdx], "serialEvent1");
-	return;
-}
-
-void serialEvent2()
-{
-	const int iSensIdx = 1;	/* Sensor Index should match SerialN */
-	serialEventRead(&_tSensor[iSensIdx], "serialEvent2");
-	return;
-}
-
-void serialEvent3()
-{
-	const int iSensIdx = 2;	/* Sensor Index should match SerialN */
-	serialEventRead(&_tSensor[iSensIdx], "serialEvent3");
-	return;
-}
-
-/** Task Execution Functions **/
-#define FUNC_NAME "exec_sensReadTask"
-int exec_sensReadTask(int iSensIdx)
-{
-	int *pParam;
-	int iRet = STATUS_FAILED;
-	
-	if ((iSensIdx < 0) || (iSensIdx >= SENSOR_LIST_SIZE))
-	{
-		dbg_print(FUNC_NAME, "Error", "No such sensor index!");
-		
-		return STATUS_FAILED;
-	}
-	
-	dbg_print(FUNC_NAME, "Reading from sensor", _tSensor[iSensIdx].aName);
-	
-	/* Check the sensor state first */
-	/* If already started, then we can proceed with reading */
-	/* Otherwise, we must activate it first */
-	if (_tSensor[iSensIdx].eState == SENSOR_STOPPED)
-	{
-		dbg_print(FUNC_NAME, "Info", "Activating sensor first...");
-		pParam = (int*) malloc(sizeof(int));
-		*pParam = iSensIdx;
-		tsk_addTask(&_tTaskQueue, TASK_SENS_ACTIVATE, pParam);
-		
-		pParam = (int*) malloc(sizeof(int));
-		*pParam = iSensIdx;
-		tsk_addTask(&_tTaskQueue, TASK_SENS_READ, pParam);
-		
-		return STATUS_OK;
-	}
-	
-	iRet = sens_read(iSensIdx);
-	if (iRet == STATUS_OK_INC)
-	{
-		dbg_print(FUNC_NAME, "Partial sensor read", NULL);
-		pParam = (int*) malloc(sizeof(int));
-		*pParam = iSensIdx;
-		tsk_addTask(&_tTaskQueue, TASK_SENS_READ, pParam);
-	
-		dbg_print(FUNC_NAME, "Sensor Data", _aRxBuf);
-		
-		return STATUS_OK;
-	}
-	else if (iRet == STATUS_FAILED)
-	{
-		dbg_print(FUNC_NAME, "Error", "Sensor Read Failed!");
-		if (_iRetryCount > 0)
-		{
-			dbg_print(FUNC_NAME, "Resending last transmission...", NULL);
-			if (sens_send(iSensIdx, _aTxBuf) != STATUS_OK)
-			{
-				dbg_print(FUNC_NAME, "Error", "Failed to resend transmission!");
-			}
-			delay(250);
-
-			_iRetryCount--;
-
-			pParam = (int*) malloc(sizeof(int));
-			*pParam = iSensIdx;
-			tsk_addTask(&_tTaskQueue, TASK_SENS_READ, pParam);
-
-			return STATUS_OK;
-		}
-		_iRetryCount = RETRY_COUNT;
-		dbg_print(FUNC_NAME, "Error", "No retries left!");
-	}
-	else
-	{			
-		dbg_print(FUNC_NAME, "Sensor Data", _aRxBuf);
-	}
-
-	pParam = (int*) malloc(sizeof(int));
-	*pParam = iSensIdx;
-	tsk_addTask(&_tTaskQueue, TASK_SENS_DEACTIVATE, pParam);
-			
-	return STATUS_OK;
-}
-#undef FUNC_NAME
-
-#define FUNC_NAME "exec_sensSendTask"
-int exec_sensSendTask(int iSensIdx)
-{
-	int *pParam;
-	
-	if ((iSensIdx < 0) || (iSensIdx >= SENSOR_LIST_SIZE))
-	{
-		dbg_print(FUNC_NAME, "Error", "No such sensor index!");
-		return STATUS_FAILED;
-	}
-
-
-	dbg_print(FUNC_NAME, "Sending command to sensor", _tSensor[iSensIdx].aName);
-
-	/* Check the sensor state first
-	 * If already started, then we can proceed with sending
-	 * the command. Otherwise, we must activate it first */
-	if (_tSensor[iSensIdx].eState == SENSOR_STOPPED)
-	{
-		dbg_print(FUNC_NAME, "Info", "Activating sensor first...");
-		pParam = (int*) malloc(sizeof(int));
-		*pParam = iSensIdx;
-		tsk_addTask(&_tTaskQueue, TASK_SENS_ACTIVATE, pParam);
-	
-		pParam = (int*) malloc(sizeof(int));
-		*pParam = iSensIdx;
-		tsk_addTask(&_tTaskQueue, TASK_SENS_SEND, pParam);
-	
-		return STATUS_OK;
-	}
-
-	if (sens_send(iSensIdx, _aTxBuf) == STATUS_OK)
-	{
-		pParam = (int*) malloc(sizeof(int));
-		*pParam = iSensIdx;
-		tsk_addTask(&_tTaskQueue, TASK_SENS_READ, pParam);
-	
-		if (_aTxBuf[0] == 'R')
-		{
-			_tSensor[iSensIdx].eState = SENSOR_READING;
-		}
-	}
-	
-	return STATUS_OK;
-}
-#undef FUNC_NAME
-
-#define FUNC_NAME "exec_sensActivateTask"
-int exec_sensActivateTask(int iSensIdx)
-{
-	sens_activateSensor(iSensIdx);
-	dbg_print(FUNC_NAME, "Activated Sensor", _tSensor[iSensIdx].aName);
-	return STATUS_OK;
-}
-#undef FUNC_NAME
-
-#define FUNC_NAME "exec_sensDeactivateTask"
-int exec_sensDeactivateTask(int iSensIdx)
-{
-	sens_deactivateSensor(iSensIdx);
-	dbg_print(FUNC_NAME, "Deactivated Sensor", _tSensor[iSensIdx].aName);
-	return STATUS_OK;
-}
-#undef FUNC_NAME
-
-/** Communication Functions **/
-#define MOD_NAME "cmh"
-int cmh_recvMessage()
-{
-	int iBufIdx = 0;
-	
-	#ifndef __USE_ARDUINO__
-	Serial.readUserInput();
-	#endif /* __USE_ARDUINO__ */
-	utl_clearBuffer(_aRxBuf, sizeof(char), RX_BUF_MAX);
-	
-	while (Serial.available() > 0)
-	{
-		if (iBufIdx > RX_BUF_MAX)
-		{
-			/* Error: Received message is too long */
-			dbg_print(MOD_NAME, "Error", "Received message too long!");
-			return STATUS_FAILED;
-		}
-		
-		/* Read a byte from Serial into the Rx buffer */
-		_aRxBuf[iBufIdx] = Serial.read();
-		
-		iBufIdx++;
-		delay(50);
-	}
-	
-	/* Update the current known Rx Buffer Length */
-	_iRxBufLen = iBufIdx;
-	
-	/*printf("\n<<RECEPTION START>>\n%s\n<<RECEPTION END>>\n\n\n", _aRxBuf);*/
-	
-	return STATUS_OK;
-}
-
-int cmh_sendMessage()
-{
-	int iBytesWritten;
-	
-	dbg_print(MOD_NAME, "Sending a message...", NULL);
-	
-	iBytesWritten = Serial.write((byte*) _aTxBuf, _iTxBufLen);
-	
-	if (iBytesWritten != _iTxBufLen)
-	{
-		/* Error: Whole message not transmitted */
-		return STATUS_FAILED;
-	}
-	
-	/* Clear the send buffer once finished transmitting */
-	utl_clearBuffer(_aTxBuf, sizeof(_aTxBuf[0]), _iTxBufLen);
-	_iTxBufLen = 0;
-	
-	
-	return STATUS_OK;
-}
-#undef MOD_NAME
-
-/** Sensor Functions **/
-
-#define MOD_NAME "sens"
-int sens_initSensors(void)
-{
-	int iIdx;
-	
-	dbg_print(MOD_NAME, "Initializing sensors...", NULL);
-
-	for (iIdx = 0; iIdx < SENSOR_LIST_SIZE; iIdx++)
-	{
-		pinMode(_tSensor[iIdx].iPin, OUTPUT);
-		digitalWrite(_tSensor[iIdx].iPin, HIGH);
-		
-		_tSensor[iIdx].aSerial.begin(38400);
-	}
-	
-	return STATUS_OK;
-}
-int sens_activateSensor(int iSensId)
-{
-	/* Power up the chosen sensor by triggering the transistor switch */
-	/* digitalWrite(_tSensor[iSensId].iPin, HIGH);
-	 *
-	 * delay(1000);
-	 */
-
-	_tSensor[iSensId].eState = SENSOR_STARTED;
-	
-	return STATUS_OK;	
-}
-
-int sens_deactivateSensor(int iSensId)
-{	
-	/* Power down the chosen sensor by triggering the transistor switch */
-	/* digitalWrite(_tSensor[iSensId].iPin, LOW);
-	 *
-	 * delay(250);
-	 */
-
-	_tSensor[iSensId].eState = SENSOR_STOPPED;
-	
-	return STATUS_OK;
-}
-
-int sens_send(int iSensId, char* pCmd)
-{	
-	if (pCmd == NULL)
-	{
-		return STATUS_FAILED;
-	}
-	
-	dbg_print(MOD_NAME, "Sent Command", pCmd);
-	
-	_tSensor[iSensId].aSerial.print(pCmd);
-	_tSensor[iSensId].aSerial.print("\r");
-	_tSensor[iSensId].aSerial.flush();
-	
-	return STATUS_OK;
-}
-
-int sens_read(int iSensId)
-{
-	int iBufIdx = 0;
-	
-	if (_tSensor[iSensId].bIsComplete)
-	{
-		dbg_print(MOD_NAME, "Sensor data completed", _tSensor[iSensId].aName);
-		utl_clearBuffer(_aRxBuf, sizeof(_aRxBuf[0]), _iRxBufLen);
-		
-		/* Copy into Rx Buf */
-		utl_strCpy(_aRxBuf,
-				   _tSensor[iSensId].aBuf,
-				   utl_strLen(_tSensor[iSensId].aBuf));
-				   
-		_tSensor[iSensId].iBufOffset = 0;
-		_tSensor[iSensId].bIsComplete = FALSE;
-		
-		/* Update the current known Rx Buffer Length */
-		_iRxBufLen = iBufIdx;
-		
-		/* Display the data to the user */
-		Serial.println(_aRxBuf);
-		
-		return STATUS_OK;
-	}
-	_iSensTimeout--;
-	
-	if (_iSensTimeout <= 0)
-	{
-		dbg_print(MOD_NAME, "Sensor timeout occurred", _tSensor[iSensId].aName);
-		
-		_iSensTimeout = SENSOR_TIMEOUT;
-		
-		return STATUS_FAILED;
-	}
-	
-	delay(250);
-	
-	return STATUS_OK_INC;
-}
-#undef MOD_NAME
 
 #ifndef __USE_ARDUINO__
 int _iLoopCountdown = 500;
 /** C's Main Function -- for off-device testing **/
 int main(void)
 {
-	Serial.set_index(0);
-	_tSensor[0].aSerial.set_index(1);
-	_tSensor[1].aSerial.set_index(2);
-	_tSensor[2].aSerial.set_index(3);
+    Serial.set_index(0);
+    _tSensor[1].aSerial.set_index(1);
+    _tSensor[2].aSerial.set_index(2);
+    _tSensor[3].aSerial.set_index(3);
 
-	setup();
-	while(_iLoopCountdown > 0)
-	{
-		loop();
-		serialEvent1();
-		serialEvent2();
-		serialEvent3();
-		_iLoopCountdown--;
-	}
-	return 1;
+    setup();
+    while(_iLoopCountdown > 0)
+    {
+        loop();
+        serialEvent1();
+        serialEvent2();
+        serialEvent3();
+        _iLoopCountdown--;
+    }
+    return 1;
 }
-
 #endif /* __USE_ARDUINO__ */
+#undef MOD_NAME
 
-/** Message Handling Functions **/
-#define MOD_NAME "msh"
-void msh_handleMessage(char* pMsg)
+#define MOD_NAME "sevt"
+void serialEventRead(tSensor_t* pSensor, const char* aSerialName)
 {
-	if (utl_compare(pMsg, "QUIT", 4) == 0)
-	{
-		#ifndef __USE_ARDUINO__
-		_iLoopCountdown = 0;
-		#endif
-	}
-	else if (utl_compare(pMsg, "READ", 4) == 0)
-	{
-		dbg_print(MOD_NAME, "Handling READ message...", NULL);
-		msh_handleSensRead(pMsg);
-	}
-	else if (utl_compare(pMsg, "CALIBRATE", 9) == 0)
-	{
-		dbg_print(MOD_NAME, "Handling CALIBRATE message...", NULL);
-		msh_handleSensCalibrate(pMsg);
-	}
-	else if (utl_compare(pMsg, "CMD", 3) == 0)
-	{
-		dbg_print(MOD_NAME, "Handling COMMAND message...", NULL);
-		msh_handleSensCmd(pMsg);
-	}
-	else if (utl_compare(pMsg, "DEBUG", 3) == 0)
-	{
-		dbg_print(MOD_NAME, "Handling DEBUG message...", NULL);
-		msh_handleDebugMode();
-	}
-	
-	return;
+    int iOffs = pSensor->iBufOffset;
+    char cRead = '\0';
+
+    while ((pSensor->aSerial).available() > 0)
+    {
+        if (iOffs == 0)
+        {
+            utl_clearBuffer(pSensor->aBuf, sizeof(char), SENS_BUF_MAX);
+            utl_strCpy(pSensor->aBuf, pSensor->aName, 2);
+            pSensor->aBuf[2] = ':';
+            pSensor->aBuf[3] = ' ';
+            iOffs += 4;
+        }
+
+        if (iOffs >= SENS_BUF_MAX)
+        {
+            dbg_print(aSerialName, "Sensor buffer is full", pSensor->aName);
+            break;
+        }
+
+        cRead = (pSensor->aSerial).read();
+
+        if (!(cRead < ' ') && !(cRead > '~'))
+        {
+            pSensor->aBuf[iOffs] = cRead;
+              pSensor->iBufOffset = iOffs;
+              iOffs++;
+        }
+
+        dbg_printChar(aSerialName, "Read Char", cRead);
+
+        if (cRead == '\r')
+        {
+            dbg_print(aSerialName, "Sensor data completed", pSensor->aBuf);
+            pSensor->bIsComplete = TRUE;
+            iOffs = 0;
+            break;
+        }
+    }
+
+    if (pSensor->bIsComplete)
+    {
+        sens_dataFinished(pSensor);
+        return;
+    }
 }
 
-int msh_handleSensRead(char* pMsg)
+void serialEvent1()
 {
-	int* pSensId;
-	char aParams[5];
-	
-	utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
-	
-	utl_getField(pMsg, aParams, 2, ' ');
-	
-	pSensId = (int*) malloc(sizeof(int));
-	*pSensId = utl_atoi(aParams);
-	
-	utl_strCpy(_aTxBuf, "R", 1);
-	
-	dbg_print(MOD_NAME, "Send Buffer Contents", _aTxBuf);
-	tsk_addTask(&_tTaskQueue, TASK_SENS_SEND, pSensId);
-	
-	return STATUS_OK;
+    const int iSensIdx = 1;    /* Sensor Index should match Serial1 */
+    serialEventRead(&_tSensor[iSensIdx], "serialEvent1");
+    return;
 }
 
-
-int msh_handleSensCalibrate(char* pMsg)
+void serialEvent2()
 {
-	int* pSensId;
-	int* pCalCmdId;
-        int iCmdLen;
-	char aCalCmd[3];
-	char aParams[5];
-	
-	utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
-	
-	/* Get the Sensor Id target */
-	utl_getField(pMsg, aParams, 2, ' ');
-	pSensId = (int*) malloc(sizeof(int));
-	*pSensId = utl_atoi(aParams);
-	
-	/* Get the Calibration Command target */
-	utl_getField(pMsg, aParams, 3, ' ');
-	pCalCmdId = (int*) malloc(sizeof(int));
-	*pCalCmdId = utl_atoi(aParams);
-	
-	if ((*pSensId < 0) || (*pSensId >= SENSOR_LIST_SIZE))
+    const int iSensIdx = 2;    /* Sensor Index should match Serial2 */
+    serialEventRead(&_tSensor[iSensIdx], "serialEvent2");
+    return;
+}
+
+void serialEvent3()
+{
+    const int iSensIdx = 3;    /* Sensor Index should match Serial3 */
+    serialEventRead(&_tSensor[iSensIdx], "serialEvent3");
+    return;
+}
+#undef MOD_NAME
+
+/******************************************************************************/
+/* SEC02: Processing Modules                                                  */
+/******************************************************************************/
+#define MOD_NAME "proc"
+/*
+ * @function     proc_readSensor()
+ * @description  Example function
+ * @returns      exit status
+ */
+status_t proc_readSensor(char* pMsg) {
+    int iSensId;
+    char aParams[5];
+
+    /* Extract the Sensor Id target for this read */
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 2, ' ');
+    iSensId = utl_atoi(aParams);
+
+    /* Ensure that we're not accessing invalid sensor IDs */
+    if ( (iSensId <= DUMMY_SENSOR_ID) || (iSensId >= SENSOR_LIST_SIZE) ) {
+        dbg_print(MOD_NAME, "Error", "Invalid Sensor Id");
+        return STATUS_FAILED;
+    }
+
+    /* Prepare the sensor */
+    _tSensor[iSensId].eState = SENSOR_READING;
+    _tSensor[iSensId].bIsComplete = FALSE;
+
+    /* Call the read function for this sensor */
+    if (_fSensorReadFunc[iSensId] != NULL) {
+        _fSensorReadFunc[iSensId](iSensId);
+    }
+
+    return STATUS_OK;
+}
+
+/*
+ * @function     proc_processInput()
+ * @description  Processes the user input or command
+ * @returns      exit status
+ */
+status_t proc_processInput(char* pMsg, int iLen) {
+    if (iLen <= 0) {
+      return STATUS_OK;
+    }
+
+    if (utl_compare(pMsg, "READ", 4) == MATCHED) {
+       proc_readSensor(pMsg);
+    #ifndef __USE_ARDUINO__
+    } else if (utl_compare(pMsg, "QUIT", 4)) {
+        _iLoopCountdown = 0;
+    #endif /* __USE_ARDUINO__ */
+    }  else {
+        dbg_print(MOD_NAME, "Error", "Invalid command input!");
+        return STATUS_FAILED;
+    }
+    return STATUS_OK;
+}
+#undef MOD_NAME
+
+/******************************************************************************/
+/* SEC03: Sensor Handling Modules                                             */
+/******************************************************************************/
+#define MOD_NAME "sens"
+status_t sens_atlasRead(int iSensId)
+{
+    _tSensor[iSensId].lReadStartTime = millis();
+    return sens_atlasSendCmd(&_tSensor[iSensId], "R");
+}
+
+status_t sens_atlasSendCmd(tSensor_t* pSensor, char* pCmd)
+{
+    if (pCmd == NULL)
+    {
+        return STATUS_FAILED;
+    }
+
+    dbg_print(MOD_NAME, "Sent Command", pCmd);
+
+    pSensor->aSerial.print(pCmd);
+    pSensor->aSerial.print("\r");
+    pSensor->aSerial.flush();
+
+    return STATUS_OK;
+}
+
+void sens_dataFinished(tSensor_t* pSensor) {
+    int iBufLen = 0;
+
+    if ( pSensor == NULL ) {
+        return;
+    }
+
+    dbg_print(MOD_NAME, "Sensor data completed", pSensor->aName);
+    utl_clearBuffer(_aTxBuffer, sizeof(_aTxBuffer[0]), _iTxBufferLen);
+
+    /* Copy into Tx Buf */
+    iBufLen = utl_strLen(pSensor->aBuf);
+    utl_strCpy( _aTxBuffer, pSensor->aBuf, iBufLen );
+
+    pSensor->lReadStartTime = 0;
+    pSensor->iBufOffset = 0;
+    pSensor->bIsComplete = FALSE;
+
+    /* Update the current known Rx Buffer Length */
+    _iTxBufferLen = iBufLen;
+    /* When a non-zero value is written here, the send response
+        function, com_sendResponse(), will be called */
+
+    return;
+}
+
+int sens_initSensors(void)
+{
+	int iIdx;
+
+	dbg_print(MOD_NAME, "Initializing sensors...", NULL);
+
+	for (iIdx = 1; iIdx < 4; iIdx++)
 	{
-		dbg_print(MOD_NAME, "Error", "No such sensor index!");
-		return STATUS_FAILED;
+		pinMode(_tSensor[iIdx].iPin, OUTPUT);
+		digitalWrite(_tSensor[iIdx].iPin, HIGH);
+
+		_tSensor[iIdx].aSerial.begin(38400);
 	}
 
-	utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
-	utl_getField(_tSensor[*pSensId].aCalCmdStr, aParams, *pCalCmdId, ' ');
-        iCmdLen = utl_strLen(aParams);
-	utl_strCpy(_aTxBuf, aParams, iCmdLen);
-	
-	dbg_print(MOD_NAME, "Send Buffer Contents", _aTxBuf);
-	tsk_addTask(&_tTaskQueue, TASK_SENS_SEND, pSensId);
-	
-	return STATUS_OK;
-}
-
-
-int msh_handleSensCmd(char* pMsg)
-{
-	int* pSensId;
-	char aParams[32];
-	char aCmdStr[16];
-	
-	utl_clearBuffer(aParams, sizeof(aParams[0]), 32);
-	utl_clearBuffer(aCmdStr, sizeof(aCmdStr[0]), 16);
-	
-	utl_getField(pMsg, aParams, 2, ' ');
-	utl_getField(pMsg, aCmdStr, 3, ' ');
-	dbg_print(MOD_NAME, "Command String", aCmdStr);
-	
-	pSensId = (int*) malloc(sizeof(int));
-	*pSensId = utl_atoi(aParams);
-	
-	utl_strCpy(_aTxBuf, aCmdStr, utl_strLen(aCmdStr));
-
-	dbg_print(MOD_NAME, "Send Buffer Contents", _aTxBuf);
-	tsk_addTask(&_tTaskQueue, TASK_SENS_SEND, pSensId);
-	
-	return STATUS_OK;
-}
-
-int msh_handleDebugMode()
-{
-	tsk_addTask(&_tTaskQueue, TASK_DEBUG_MODE_TOGGLE, NULL);
 	return STATUS_OK;
 }
 
 #undef MOD_NAME
 
-/** Task Queue Functions **/
-#define MOD_NAME "tsk"
-int tsk_initQueue(tTaskQueue_t* pQueue)
-{
-	utl_clearBuffer(pQueue, sizeof(tTaskQueue_t), 1);
-	
-	return STATUS_OK;
+/******************************************************************************/
+/* SEC04: Communication Modules                                               */
+/******************************************************************************/
+#define MOD_NAME "com"
+/*
+ * @function     com_receiveUserInput()
+ * @description  Receives user input or commands from Serial
+ * @returns      exit status
+ */
+status_t com_receiveUserInput() {
+    int iBufIdx = 0;
+
+    #ifndef __USE_ARDUINO__
+    Serial.readUserInput();
+    #endif /* __USE_ARDUINO__ */
+
+    utl_clearBuffer(_aRxBuffer, sizeof(char), SZ_RX_BUFFER);
+
+    while (Serial.available() > 0)
+    {
+        if (iBufIdx > SZ_RX_BUFFER)
+        {
+            /* Error: Received message is too long */
+            dbg_print(MOD_NAME, "Error", "Received message too long!");
+            return STATUS_FAILED;
+        }
+
+        /* Read a byte from Serial into the Rx buffer */
+        _aRxBuffer[iBufIdx] = Serial.read();
+
+        iBufIdx++;
+        delay(50);
+    }
+
+    /* Update the current known Rx Buffer Length */
+    _iRxBufferLen = iBufIdx;
+
+    /*printf("\n<<RECEPTION START>>\n%s\n<<RECEPTION END>>\n\n\n", _aRxBuf);*/
+
+    return STATUS_OK;
 }
 
-void tsk_displayQueue(tTaskQueue_t* pQueue)
-{
-	int i = 0;
-	tQueueTask_t* pTask = pQueue->pBegin;
-	
-	printf("\n");
-	
-	while(pTask != NULL)
-	{
-		printf("Task #%d: %s\n", i, taskType_tbl[pTask->iTaskType]);
-		pTask = pTask->pNext;
-		i++;
-	}
-}
+/*
+ * @function     com_sendResponse()
+ * @description  Sends a response through Serial
+ * @returns      exit status
+ */
+status_t com_sendResponse() {
+    int iBytesWritten;
 
-int tsk_addTask(tTaskQueue_t *pTaskQueue, int iTaskType, void* vParams)
-{
-	int i;
-	tQueueTask_t* pTask;
-	
-	if (pTaskQueue->iLen >= TASK_QUEUE_SIZE)
-	{
-		dbg_print(MOD_NAME, "Error", "Queue full.");
-		return STATUS_OK;
-	}
-	
-	if (pTaskQueue->iLen < 0)
-	{
-		dbg_print(MOD_NAME, "Error", "Invalid number of tasks!");
-		return STATUS_FAILED;
-	}
-	
-	for (i = 0; i < TASK_QUEUE_SIZE; i++)
-	{
-		if (_tTasks[i].iTaskType == 0)
-		{
-			break;
-		}
-	}
-	
-	if (i >= TASK_QUEUE_SIZE)
-	{
-		dbg_print(MOD_NAME, "Error", "Unable to create new task!");
-	}
-	
-	_tTasks[i].iTaskType = iTaskType;
-	_tTasks[i].vParams = vParams;
-	
-	if (pTaskQueue->pBegin == NULL)
-	{
-		pTaskQueue->pBegin = &_tTasks[i];
-	}
-	else
-	{
-		pTask = pTaskQueue->pBegin;
-		while(pTask != NULL)
-		{
-			if (pTask->pNext == NULL)
-			{
-				pTask->pNext = &(_tTasks[i]);
-				break;
-			}
-			
-			pTask = pTask->pNext;
-		}
-	}
-	
-	pTaskQueue->iLen++;
-	
-	return STATUS_OK;
-}
+        if (_iTxBufferLen <= 0) {
+          return STATUS_OK;
+        }
 
-int tsk_removeTask(tTaskQueue_t *pTaskQueue)
-{
-	/* NOTE: This will always remove the first task only */
-	tQueueTask_t* pNewBegin;
-	
-	if (pTaskQueue->pBegin == NULL)
-	{
-		dbg_print(MOD_NAME, "Error", "Task queue is already empty!");
-		return STATUS_FAILED;
-	}
-	
-	pNewBegin = (pTaskQueue->pBegin)->pNext;
-	
-	if (((pTaskQueue->pBegin)->vParams) != NULL)
-	{
-		free((pTaskQueue->pBegin)->vParams);
-	}
+    dbg_print(MOD_NAME, "Sending a message...", NULL);
 
-	utl_clearBuffer(pTaskQueue->pBegin, sizeof(tQueueTask_t), 1);
-	
-	pTaskQueue->pBegin = pNewBegin;
-	
-	if(pTaskQueue->iLen > 0)
-	{	
-		pTaskQueue->iLen--;
-	}
-	
-	return STATUS_OK;
+    iBytesWritten = Serial.write((byte*) _aTxBuffer, _iTxBufferLen);
+
+    if (iBytesWritten != _iTxBufferLen) {
+        /* Error: Whole message not transmitted */
+        return STATUS_FAILED;
+    }
+
+    /* Clear the send buffer once finished transmitting */
+    utl_clearBuffer(_aTxBuffer, sizeof(_aTxBuffer[0]), _iTxBufferLen);
+    _iTxBufferLen = 0;
+
+    return STATUS_OK;
 }
 #undef MOD_NAME
 
-/** Utility Functions **/
+/******************************************************************************/
+/* SEC05: Timing Modules                                                      */
+/******************************************************************************/
+#define MOD_NAME "tmr"
+status_t tmr_manageSensorTimeouts() {
+    int iSensIdx;
+
+    for (iSensIdx = 1; iSensIdx < SENSOR_LIST_SIZE; iSensIdx++) {
+        /* If the sensor state is SENSOR_READING and is not yet
+            marked as complete, then check if the SENSOR_READ_TIMEOUT
+            duration has been reached */
+        if ( (_tSensor[iSensIdx].eState == SENSOR_READING) &&
+                (_tSensor[iSensIdx].bIsComplete == FALSE) ) {
+            if ( tmr_updateTimeout(&_tSensor[iSensIdx]) != STATUS_OK ) {
+                dbg_print(MOD_NAME, "Error", "Update timeout failed");
+            }
+        }
+    }
+    return STATUS_OK;
+}
+
+status_t tmr_updateTimeout(tSensor_t* pSensor) {
+    long lElapsedTime = 0;
+
+    if (pSensor == NULL) {
+        dbg_print(MOD_NAME, "Error", "Invalid sensor ptr");
+        return STATUS_FAILED;
+    }
+
+    if (pSensor->lReadStartTime == 0) {
+        dbg_print(MOD_NAME, "Warning", "Read start time is zero");
+        return STATUS_OK;
+    }
+
+    lElapsedTime = millis() - pSensor->lReadStartTime;
+    if ( lElapsedTime >= SENSOR_READ_TIMEOUT ) {
+        /* Force the sensor read to finish */
+        utl_clearBuffer(pSensor->aBuf, sizeof(pSensor->aBuf[0]), SENS_BUF_MAX);
+        pSensor->iBufOffset = 0;
+        sens_dataFinished(pSensor);
+        return STATUS_OK;
+    }
+
+    return STATUS_OK;
+}
+
+#undef MOD_NAME
+
+/******************************************************************************/
+/* SEC05: Utility Modules                                                     */
+/******************************************************************************/
 #define MOD_NAME "utl"
-void utl_clearBuffer(void* pBuf, int iSize,  int iLen)
-{
-	memset(pBuf, 0, iLen * iSize);
+/*
+ * @function     utl_compare()
+ * @description  Wrapper function for strncmp()
+ * @returns      none
+ */
+int utl_compare(const char* s1, const char* s2, int iLen) {
+    return ((strncmp(s1, s2, iLen) == 0) ? MATCHED : NOT_MATCHED);
 }
 
-int utl_compare(const char* s1, const char* s2, int iLen)
+/*
+ * @function     utl_clearBuffer()
+ * @description  Erases the contents of a buffer up to the specified length
+ * @returns      none
+ */
+void utl_clearBuffer(void* pBuf, int iSize,  int iLen) {
+    memset(pBuf, 0, iLen * iSize);
+}
+
+/*
+ * @function    utl_atoi()
+ * @description Converts the given char string to an integer
+ * @returns     Integer equivalent of the char string
+ */
+int utl_atoi(const char* s) {
+    return atoi(s);
+}
+
+/*
+ * @function    utl_getField()
+ * @description Extracts a specific 'field' given a delimited string
+ * @returns     An integer status code
+ */
+int utl_getField(char* s1, char* s2, int iTgtField, char cDelim)
 {
-	
-	return strncmp(s1, s2, iLen);
+    char* c1;
+    int iCurrField = 1;
+    int iOutIdx = 0;
+
+    if (s1 == NULL) {
+        return STATUS_FAILED;
+    }
+
+    c1 = s1;
+
+    while (*c1 != '\0')
+    {
+        if (iTgtField == iCurrField)
+        {
+            s2[iOutIdx] = *c1;
+
+            iOutIdx++;
+        }
+
+        if (*c1 == cDelim)
+        {
+            iCurrField++;
+        }
+
+        c1++;
+    }
+
+    return STATUS_OK;
 }
 
 int utl_strLen(const char* s1)
 {
-	return strlen(s1);
+    return strlen(s1);
 }
 
 int utl_strCpy(char* pDest, const char* pSrc, int iLen)
 {
-	strncpy(pDest, pSrc, iLen);
-	
-	return STATUS_OK;
+    strncpy(pDest, pSrc, iLen);
+
+    return STATUS_OK;
 }
 
-int utl_atoi(const char* s)
+int utl_strCat(char* pDest, const char* pSrc, int iLen)
 {
-	return atoi(s);
+    strncat(pDest, pSrc, iLen);
+
+    return STATUS_OK;
 }
 
-int utl_getField(char* s1, char* s2, int iTgtField, char cDelim)
-{
-	char* c1;
-	int iCurrField = 1;
-	int iOutIdx = 0;
-	
-	c1 = s1;
-	
-	while (*c1 != '\0')
-	{
-		if (iTgtField == iCurrField)
-		{
-			s2[iOutIdx] = *c1;
-			
-			iOutIdx++;
-		}
-		
-		if (*c1 == cDelim)
-		{
-			iCurrField++;
-		}
-		
-		c1++;
-	}
-	
-	
-	return STATUS_OK;
-}
+
 #undef MOD_NAME
 
-/** Debug Mode Functions **/
+/******************************************************************************/
+/* SEC06: Debug Modules                                                       */
+/******************************************************************************/
 void dbg_print(const char* pTag, const char* pMsg, const char* pExtra)
 {
-	if (!_bIsDebugMode)
-	{
-		return;
-	}
-	
-	if ((pMsg == NULL) || (utl_strLen(pMsg) <= 0))
-	{
-		return;
-	}
-	
-	Serial.print("[");
-	if ((pTag == NULL) || (utl_strLen(pTag) <= 0))
-	{
-		Serial.print("DEBUG");
-	}
-	else
-	{
-		Serial.print(pTag);
-	}
-	Serial.print("] ");
-	
-	Serial.print(pMsg);
-	
-	if ((pExtra != NULL) && (utl_strLen(pExtra) > 0))
-	{
-		Serial.print(": ");
-		Serial.print(pExtra);
-	}
-	Serial.print("\n");
-	
-	return;
+    if (!_debugMode)
+    {
+        return;
+    }
+
+    if ((pMsg == NULL) || (utl_strLen(pMsg) <= 0))
+    {
+        return;
+    }
+
+    Serial.print("[");
+    if ((pTag == NULL) || (utl_strLen(pTag) <= 0))
+    {
+        Serial.print("DEBUG");
+    }
+    else
+    {
+        Serial.print(pTag);
+    }
+    Serial.print("] ");
+
+    Serial.print(pMsg);
+
+    if ((pExtra != NULL) && (utl_strLen(pExtra) > 0))
+    {
+        Serial.print(": ");
+        Serial.print(pExtra);
+    }
+    Serial.print("\n");
+
+    return;
 }
 
 void dbg_printUL(const char* pTag, const char* pMsg, unsigned long ulVal)
 {
-	char aLongStr[10];
-	
-	if (!_bIsDebugMode)
-	{
-		return;
-	}
-	
-	utl_clearBuffer(aLongStr, sizeof(aLongStr[0]), 10);
-	
-	if (snprintf(aLongStr, 10, "%li", ulVal) < 0)
-	{
-		dbg_print(pTag, "Message Printing Error", pMsg);
-		return;
-	}
+    char aLongStr[10];
 
-	dbg_print(pTag, pMsg, aLongStr);
-	return;
+    if (!_debugMode)
+    {
+        return;
+    }
+
+    utl_clearBuffer(aLongStr, sizeof(aLongStr[0]), 10);
+
+    if (snprintf(aLongStr, 10, "%li", ulVal) < 0)
+    {
+        dbg_print(pTag, "Message Printing Error", pMsg);
+        return;
+    }
+
+    dbg_print(pTag, pMsg, aLongStr);
+    return;
 }
 
 void dbg_printChar(const char* pTag, const char* pMsg, char cVal)
 {
-	char aCharStr[10];
-	
-	if (!_bIsDebugMode)
-	{
-		return;
-	}
-	
-	if ((cVal < 20) || (cVal > 176))
-	{
-		if (snprintf(aCharStr, 10, "{%d}", cVal) < 0)
-		{
-			dbg_print(pTag, "Message Printing Error", pMsg);
-			return;
-		}
-	}
-	else
-	{
-		if (snprintf(aCharStr, 10, "%c", cVal) < 0)
-		{
-			dbg_print(pTag, "Message Printing Error", pMsg);
-			return;
-		}
-	}
-	
-	dbg_print(pTag, pMsg, aCharStr);
-	return;
+    char aCharStr[10];
+
+    if (!_debugMode)
+    {
+        return;
+    }
+
+    if ((cVal < 20) || (cVal > 176))
+    {
+        if (snprintf(aCharStr, 10, "{%d}", cVal) < 0)
+        {
+            dbg_print(pTag, "Message Printing Error", pMsg);
+            return;
+        }
+    }
+    else
+    {
+        if (snprintf(aCharStr, 10, "%c", cVal) < 0)
+        {
+            dbg_print(pTag, "Message Printing Error", pMsg);
+            return;
+        }
+    }
+
+    dbg_print(pTag, pMsg, aCharStr);
+    return;
 }
 
-#endif /* __OREAD_CPP__ */
 
+#endif /* __OREAD_ARDUINO_C__ */
 

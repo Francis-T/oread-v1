@@ -111,6 +111,8 @@ int SerialStub::write(char* pBytes, int iLen)
 		printf("[%d] ", pBytes[i]);
 	}
 	printf("\n");
+
+    printf("{%s}\n", pBytes);
 	
 	if ((_serialIndex != 0) &&
 		(iLen > 0) &&
