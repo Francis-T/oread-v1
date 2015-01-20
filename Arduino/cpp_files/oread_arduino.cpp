@@ -39,6 +39,10 @@ typedef enum sensorStates {  SENSOR_STARTED,
 
 /* typedef for sensor read functions */
 typedef status_t (*fSensReadFunc_t)(int sensId);
+/* typedef for sensor calibrate functions */
+typedef status_t (*fSensCalibrateFunc_t)(int sensId, char param);
+/* typedef for sensor  info */
+typedef status_t (*fSensInfoFunc_t)(int sensId);
 
 /* typedef for the Sensor Info struct */
 typedef struct sensorInfo
@@ -87,7 +91,9 @@ status_t proc_drainWaterReservoir();
 status_t proc_processInput(char* pMsg, int iLen);
 
 status_t sens_atlasRead(int iSensId);
-status_t sens_atlasSendCmd(tSensor_t* pSensor, char* pCmd);
+status_t sens_atlasInfo(int iSensId);
+status_t sens_atlasCalibrate(int iSensId, char cParam);
+status_t sens_atlasSendCmd(tSensor_t* pSensor, const char* pCmd);
 void sens_dataFinished(tSensor_t* pSensor);
 int sens_initSensors(void);
 
@@ -127,6 +133,26 @@ fSensReadFunc_t _fSensorReadFunc[SENSOR_LIST_SIZE] =
     sens_atlasRead,
     NULL /* later, sens_temperatureRead() */
 };
+
+fSensInfoFunc_t _fSensorInfoFunc[SENSOR_LIST_SIZE] =
+{
+    NULL,
+    sens_atlasInfo,
+    sens_atlasInfo,
+    sens_atlasInfo,
+    NULL /* later, sens_temperatureRead() */
+};
+
+fSensCalibrateFunc_t _fSensorCalibrateFunc[SENSOR_LIST_SIZE] =
+{
+    NULL,
+    sens_atlasCalibrate,
+    sens_atlasCalibrate,
+    sens_atlasCalibrate,
+    NULL /* later, sens_temperatureRead() */
+};
+
+
 
 /* Input/Output:
  * e.g.
@@ -210,7 +236,6 @@ void serialEventRead(tSensor_t* pSensor, const char* aSerialName)
             pSensor->aBuf[3] = ' ';
             iOffs += 4;
         }
-
         if (iOffs >= SENS_BUF_MAX)
         {
             dbg_print(aSerialName, "Sensor buffer is full", pSensor->aName);
@@ -294,11 +319,56 @@ status_t proc_readSensor(char* pMsg) {
     _tSensor[iSensId].eState = SENSOR_READING;
     _tSensor[iSensId].bIsComplete = FALSE;
 
-    /* Call the read function for this sensor */
-    if (_fSensorReadFunc[iSensId] != NULL) {
-        _fSensorReadFunc[iSensId](iSensId);
+    /* Call the info function for this sensor */
+    if (_fSensorInfoFunc[iSensId] != NULL) {
+        _fSensorInfoFunc[iSensId](iSensId);
     }
 
+    return STATUS_OK;
+}
+
+status_t proc_calibrateSensor(char* pMsg) 
+{
+    int iSensId;
+    char cCalParam;
+    char aParams[5];
+
+    /* Extract the Sensor Id target for this read */
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 2, ' ');
+    iSensId = utl_atoi(aParams);
+
+    /* Ensure that we're not accessing invalid sensor IDs */
+    if ( (iSensId <= DUMMY_SENSOR_ID) || (iSensId >= SENSOR_LIST_SIZE) ) {
+        dbg_print(MOD_NAME, "Error", "Invalid Sensor Id");
+        return STATUS_FAILED;
+    }
+
+    /* Extract the Calibration Param for this read */
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 1, ' ');
+    cCalParam = aParams[0];
+
+    /* Calibration parameter should be an uppercase letter */ 
+    if ( (cCalParam < 'A') || (cCalParam > 'Z' ) ) {
+        dbg_print(MOD_NAME, "Error", "Invalid Calibration Param");
+        return STATUS_FAILED;
+    }
+
+    /* Prepare the sensor */
+    _tSensor[iSensId].eState = SENSOR_READING;
+    _tSensor[iSensId].bIsComplete = FALSE;
+
+    /* Call the calibrate function for this sensor */
+    if (_fSensorCalibrateFunc[iSensId] != NULL) {
+        _fSensorCalibrateFunc[iSensId](iSensId, cCalParam);
+    }
+
+    return STATUS_OK;
+}
+
+status_t proc_getSensorInfo(char* pMsg)
+{
     return STATUS_OK;
 }
 
@@ -314,6 +384,12 @@ status_t proc_processInput(char* pMsg, int iLen) {
 
     if (utl_compare(pMsg, "READ", 4) == MATCHED) {
        proc_readSensor(pMsg);
+    } else if (utl_compare(pMsg, "DEBUG", 5)) {
+        _debugMode = !_debugMode;
+    } else if (utl_compare(pMsg, "INFO", 4)) {
+        proc_getSensorInfo(pMsg); /* TODO */
+    } else if (utl_compare(pMsg, "CALIB", 5)) {
+        proc_calibrateSensor(pMsg); /* TODO */
     #ifndef __USE_ARDUINO__
     } else if (utl_compare(pMsg, "QUIT", 4)) {
         _iLoopCountdown = 0;
@@ -336,7 +412,24 @@ status_t sens_atlasRead(int iSensId)
     return sens_atlasSendCmd(&_tSensor[iSensId], "R");
 }
 
-status_t sens_atlasSendCmd(tSensor_t* pSensor, char* pCmd)
+status_t sens_atlasInfo(int iSensId)
+{
+    _tSensor[iSensId].lReadStartTime = millis();
+    return sens_atlasSendCmd(&_tSensor[iSensId], "I");
+}
+
+status_t sens_atlasCalibrate(int iSensId, char cParam)
+{
+    char aCalStr[3];
+
+    utl_clearBuffer(aCalStr, sizeof(aCalStr[0]), 3);
+
+    /* TODO */
+
+    return sens_atlasSendCmd(&_tSensor[iSensId], "I");
+}
+
+status_t sens_atlasSendCmd(tSensor_t* pSensor, const char* pCmd)
 {
     if (pCmd == NULL)
     {
@@ -369,6 +462,7 @@ void sens_dataFinished(tSensor_t* pSensor) {
     pSensor->lReadStartTime = 0;
     pSensor->iBufOffset = 0;
     pSensor->bIsComplete = FALSE;
+    pSensor->eState = SENSOR_STARTED;
 
     /* Update the current known Rx Buffer Length */
     _iTxBufferLen = iBufLen;
