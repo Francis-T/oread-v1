@@ -86,6 +86,12 @@ public class BluetoothController extends AbstractController {
 	}
 
 	public Status connectToDeviceByName(String deviceName) {
+		if (this.getState() == ControllerState.ACTIVE) {
+			OLog.err("BluetoothController already connected: " + this.getState().toString());
+			return Status.ALREADY_STARTED;
+			
+		}
+		
 		if (this.getState() != ControllerState.READY) {
 			OLog.err("BluetoothController has not been started: " + this.getState().toString());
 			return Status.FAILED;
@@ -313,7 +319,9 @@ public class BluetoothController extends AbstractController {
 			_btConnectThread = null;
 		}
 		
+		
 		this.setState(ControllerState.ACTIVE);
+		OLog.info("Bluetooth connected!");
 		
 		return Status.OK;
 	}

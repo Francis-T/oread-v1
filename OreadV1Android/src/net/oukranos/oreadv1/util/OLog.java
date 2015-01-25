@@ -27,6 +27,6 @@ public class OLog {
 	 */
 	public static String getMethodName(final int depth) {
 		final StackTraceElement[] ste = Thread.currentThread().getStackTrace();
-		return (ste[ste.length - 1 - depth].getMethodName());
+		return (ste[ste.length - 2 - depth].getMethodName()) + " "  + (ste[ste.length - 1 - depth].getMethodName());
 	}
 }

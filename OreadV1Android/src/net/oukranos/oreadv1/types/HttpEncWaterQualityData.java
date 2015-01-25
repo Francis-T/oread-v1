@@ -27,18 +27,18 @@ public class HttpEncWaterQualityData extends WaterQualityData implements HttpEnc
 			//reportData.
 			request.put("origin", this.getId());
 			//request.put("time", data.timestamp);
-			request.put("co2", this.dissolved_oxygen);
-			request.put("conductivity", this.conductivity);
-			request.put("pH", this.pH);
-			request.put("temperature", this.temperature);
+			request.put("co2", (this.dissolved_oxygen < 0.01 ? 0.01 : this.dissolved_oxygen) );
+			request.put("conductivity", (this.conductivity < 0.01 ? 0.01 : this.conductivity) );
+			request.put("pH", (this.pH < 0.01 ? 0.01 : this.pH) );
+			request.put("temperature", (this.temperature < 0.01 ? 0.01 : this.temperature) );
 			request.put("recordStatus", "OK");
 			request.put("arsenic", 0.01);	// TODO Placeholder
 			request.put("mercury", 0.01);	// TODO Placeholder
 			request.put("copper", 0.01);	// TODO Placeholder
 			request.put("zinc", 0.01);		// TODO Placeholder
 			request.put("message", "test data");
-			request.put("tds", this.tds);
-			request.put("salinity", this.salinity);
+			request.put("tds", (this.tds < 0.01 ? 0.01 : this.tds) );
+			request.put("salinity", (this.salinity < 0.01 ? 0.01 : this.salinity) );
 			request.put("dateRecorded", this.getTimestamp());
 			
 		} catch (JSONException e) {
@@ -54,7 +54,8 @@ public class HttpEncWaterQualityData extends WaterQualityData implements HttpEnc
 			return null;
 		}
 		
+		OLog.info("(HttpEncWaterQualityData) Message: " + ((StringEntity)e).toString() );
+		
 		return e;
 	}
-	
 }

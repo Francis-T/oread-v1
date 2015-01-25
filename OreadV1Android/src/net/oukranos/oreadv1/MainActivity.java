@@ -1,10 +1,19 @@
 package net.oukranos.oreadv1;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
+import java.util.TimeZone;
 
 import net.oukranos.oreadv1.controller.MainController;
+import net.oukranos.oreadv1.interfaces.CameraControlIntf;
+import net.oukranos.oreadv1.interfaces.CapturedImageMetaData;
 import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
+import net.oukranos.oreadv1.types.CameraTaskType;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
@@ -13,12 +22,16 @@ import net.oukranos.oreadv1.util.SystemUiHider;
 
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.hardware.Camera;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.ListView;
 
 /**
@@ -27,7 +40,7 @@ import android.widget.ListView;
  * 
  * @see SystemUiHider
  */
-public class MainActivity extends Activity implements MainControllerEventHandler {
+public class MainActivity extends Activity implements MainControllerEventHandler, CameraControlIntf {
 	/**
 	 * Whether or not the system UI should be auto-hidden after
 	 * {@link #AUTO_HIDE_DELAY_MILLIS} milliseconds.
@@ -50,6 +63,9 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 	 * The flags to pass to {@link SystemUiHider#getInstance}.
 	 */
 	private static final int HIDER_FLAGS = SystemUiHider.FLAG_HIDE_NAVIGATION;
+	
+	private static final int DEFAULT_PICTURE_WIDTH  = 640;
+	private static final int DEFAULT_PICTURE_HEIGHT = 480;
 
 	/**
 	 * The instance of the {@link SystemUiHider} for this activity.
@@ -58,8 +74,12 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 	
 	private MainController _mainController = null;
 	private PullDataTask _pullDataTask = null;
+	private CameraControlTask _cameraControlTask = null;
 	private SensorDataAdapter _sensorDataAdapter = null;
 	private List<WaterQualityData> _sensorData = null;
+	private Camera _camera = null;
+	private CameraPreview _cameraPreview = null;
+	private Thread _cameraCaptureThread = null;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -171,6 +191,20 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 				}
 			}
 		});
+
+//		_camera = Camera.open();
+//		List<Camera.Size> picSizeList = _camera.getParameters().getSupportedPictureSizes();
+//		List<Camera.Size> prevSizeList = _camera.getParameters().getSupportedPreviewSizes();
+//		
+//		for ( Camera.Size p : picSizeList ) {
+//			OLog.info("Picture Size: " + p.height + ", " + p.width);
+//		}
+//		
+//		for ( Camera.Size p : prevSizeList ) {
+//			OLog.info("Picture Size: " + p.height + ", " + p.width);
+//		}
+//		_camera = null;
+		
 	}
 
 	@Override
@@ -193,6 +227,24 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 			_mainController.initialize();
 		}
 		
+		if ( _cameraState == CameraState.INACTIVE ) {
+			if ( _camera == null ) {
+				_camera = Camera.open();
+				Camera.Parameters _cameraParams = _camera.getParameters();
+				_cameraParams.setPictureSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
+				_cameraParams.setPreviewSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
+				_cameraParams.setRotation(90);
+				_camera.setParameters(_cameraParams);
+				
+				if (_cameraPreview == null) {
+					_cameraPreview = new CameraPreview(this, _camera);
+
+					FrameLayout preview = (FrameLayout) this.findViewById(R.id.camera_preview);
+					preview.addView(_cameraPreview);
+				}
+			}			
+		}
+				
 		return;
 	}
 	
@@ -202,6 +254,18 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 			_mainController.stop();
 		}
 		super.onPause();
+		
+		if ( _cameraState != CameraState.INACTIVE ) {
+			if (_camera != null) {
+
+				FrameLayout preview = (FrameLayout) this.findViewById(R.id.camera_preview);
+				preview.removeAllViews();
+				
+				_camera.release();
+				_camera = null;
+			}
+		}
+		
 		return;
 	}
 	
@@ -247,6 +311,51 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 		}
 	};
 
+	/**********************************************************************/
+	/**  CameraController Triggers                                       **/
+	/**********************************************************************/
+	@Override
+	public Status triggerCameraInitialize() {
+		/* Start a camera control task to initialize the camera */
+		if ( _cameraControlTask != null ) {
+			OLog.err("An old camera ctrl task still exists");
+			return Status.FAILED;
+		}
+		
+		_cameraControlTask = new CameraControlTask(CameraTaskType.INITIALIZE);
+		_cameraControlTask.execute();
+		
+		return Status.OK;
+	}
+
+	@Override
+	public Status triggerCameraCapture(CapturedImageMetaData container) {
+		/* Start a camera control task to take a picture with the camera */
+		if ( _cameraControlTask != null ) {
+			OLog.err("An old camera ctrl task still exists");
+			return Status.FAILED;
+		}
+		
+		_cameraControlTask = new CameraControlTask(CameraTaskType.CAPTURE, container);
+		_cameraControlTask.execute();
+		
+		return Status.OK;
+	}
+
+	@Override
+	public Status triggerCameraShutdown() {
+		/* Start a camera control task to shutdown the camera */
+		if ( _cameraControlTask != null ) {
+			OLog.err("An old camera ctrl task still exists");
+			return Status.FAILED;
+		}
+		
+		_cameraControlTask = new CameraControlTask(CameraTaskType.SHUTDOWN);
+		_cameraControlTask.execute();
+		
+		return Status.OK;
+	}
+
 	Handler mHideHandler = new Handler();
 	Runnable mHideRunnable = new Runnable() {
 		@Override
@@ -254,7 +363,10 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 			mSystemUiHider.hide();
 		}
 	};
-
+	
+	/**********************************************************************/
+	/**  Private functions                                               **/
+	/**********************************************************************/
 	/**
 	 * Schedules a call to hide() in [delay] milliseconds, canceling any
 	 * previously scheduled calls.
@@ -264,7 +376,164 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 		mHideHandler.postDelayed(mHideRunnable, delayMillis);
 	}
 	
-	/* Inner classes */
+	
+	/* Camera Functions */
+	private CameraState _cameraState = CameraState.INACTIVE;
+	
+	private Status cameraInitialize() {
+		/* Initialize the camera */
+		if ( _camera == null ) {
+			try {
+				_camera = Camera.open();
+				Camera.Parameters _cameraParams = _camera.getParameters();
+				_cameraParams.setPictureSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
+				_cameraParams.setPreviewSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
+				_cameraParams.setRotation(90);
+				_camera.setParameters(_cameraParams);
+				
+			} catch (Exception e) {
+				OLog.err("Error: Could not open camera.");
+				return Status.FAILED;
+			}
+		}
+
+		/* Initialize the invisible preview */
+		if (_cameraPreview == null) {
+			_cameraPreview = new CameraPreview(this, _camera);
+			
+			FrameLayout preview = (FrameLayout) this.findViewById(R.id.camera_preview);
+			preview.addView(_cameraPreview);
+		}
+		
+		_cameraState = CameraState.READY;
+		
+		return Status.OK;
+	}
+	
+	private Status cameraCapture(CapturedImageMetaData container) {
+		SavePictureCallback lProcessPic = new SavePictureCallback(container);
+		try {
+			_camera.takePicture(null, null, lProcessPic);
+		} catch (Exception e) {
+			OLog.err("Error: " + e.getMessage());
+		}
+
+		_cameraState = CameraState.BUSY;
+		
+		/* Wait until the camera capture is received */		
+		_cameraCaptureThread = Thread.currentThread();
+		try {
+			Thread.sleep(5000);
+		} catch (InterruptedException e) {
+			OLog.info("Interrupted");
+		}
+		
+		_cameraCaptureThread = null;
+		_cameraState = CameraState.READY;
+		
+		return Status.OK;
+	}
+	
+	private Status cameraShutdown() {
+		if (_camera != null) {
+			FrameLayout preview = (FrameLayout) this.findViewById(R.id.camera_preview);
+			preview.removeAllViews();
+			_camera.release();
+			_camera = null;
+		}
+		
+		_cameraState = CameraState.INACTIVE;
+		
+		return Status.OK;
+	}
+	
+	/* TODO REFACTOR THIS */
+	private void savePictureToFile(CapturedImageMetaData container, byte[] data) {
+		final String root_sd = Environment.getExternalStorageDirectory().toString();
+		final String LOG_ID_STRING = "[savePictureToFile]";
+		
+		/* Save the marker trace to a file */
+		String savePath = root_sd + "/OreadPrototype";
+		File saveDir = new File(savePath);
+		
+		if (!saveDir.exists())
+		{
+			saveDir.mkdirs();
+		}
+		
+		Calendar calInstance = Calendar.getInstance(TimeZone.getTimeZone("GMT+8"));
+		int hour = calInstance.get(Calendar.HOUR_OF_DAY);
+		int min = calInstance.get(Calendar.MINUTE);
+		int sec = calInstance.get(Calendar.SECOND);
+		
+		String hourStr = (hour < 10 ? "0" + Integer.toString(hour) : Integer.toString(hour));
+		String minStr = (min < 10 ? "0" + Integer.toString(min) : Integer.toString(min));
+		String secStr = (sec < 10 ? "0" + Integer.toString(sec) : Integer.toString(sec));
+		
+		File saveFile = null;
+
+		saveFile = new File(saveDir, ("OREAD_Image_" + hourStr + minStr + secStr + ".jpg"));
+		
+		try {
+			if (!saveFile.createNewFile())
+			{
+				Log.e(LOG_ID_STRING, "Error: Failed to create save file!");
+				return;
+			}
+		} catch (IOException e1) {
+			e1.printStackTrace();
+		}
+
+		try {
+			FileOutputStream saveFileStream = new FileOutputStream(saveFile);
+			
+			saveFileStream.write(data);
+			
+			saveFileStream.close();
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		/* TODO CHECK IF THE PATHS and NAMES are correct */
+		container.setCaptureFile(saveFile.getName(), saveFile.getParent());
+		
+		OLog.info("Saved! (see FilePath:" + container.getCaptureFilePath() + " FileName:" + container.getCaptureFileName() +" )");
+	}
+	
+
+	/**********************************************************************/
+	/**  Private classes                                                 **/
+	/**********************************************************************/
+	private class SavePictureCallback implements Camera.PictureCallback {
+		private CapturedImageMetaData _saveContainer = null;
+		
+		public SavePictureCallback(CapturedImageMetaData container) {
+			this._saveContainer = container;
+			
+			return;
+		}
+		
+		@Override
+		public void onPictureTaken(byte[] data, Camera camera) {
+			OLog.info("SavePictureCallback invoked.");
+			savePictureToFile(_saveContainer, data);
+			_camera.startPreview();
+
+			/* Unblock the thread waiting for the camera capture */
+			if ( (_cameraCaptureThread != null) && (_cameraCaptureThread.isAlive()) ) {
+				_cameraCaptureThread.interrupt();
+			} else {
+				OLog.warn("Camera capture thread does not exist");
+			}
+			
+			return;
+		}
+		
+	}
+
+	/**  Task Classes  **/
 	private class PullDataTask extends AsyncTask<Void, Void, TaskStatus> {
 
 		@Override
@@ -282,8 +551,8 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 				}
 				
 				/* Pull data from the MainController */
-				WaterQualityData data = new WaterQualityData(0); // TODO This ID should be a variable instead
-				if ( _mainController.getData(data) != net.oukranos.oreadv1.types.Status.OK) {
+				WaterQualityData data = _mainController.getData(); // TODO This ID should be a variable instead
+				if ( data == null ) {
 					OLog.err("Failed to pull data");
 					return TaskStatus.FAILED;
 				}
@@ -300,7 +569,9 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 				OLog.info(  "   pH: " + d.pH +
 							"  DO2: " + d.dissolved_oxygen +
 							" COND: " + d.conductivity + 
-							" TEMP: " + d.temperature);
+							" TEMP: " + d.temperature + 
+							"  TDS: " + d.tds + 
+							"  SAL: " + d.salinity );
 			}
 			
 			if (_pullDataTask != null) {
@@ -321,7 +592,62 @@ public class MainActivity extends Activity implements MainControllerEventHandler
 		
 	}
 	
+	private class CameraControlTask extends AsyncTask<Void, Void, Void> {
+		private CameraTaskType type = null;
+		private CapturedImageMetaData container = null;
+		
+		public CameraControlTask(CameraTaskType type) {
+			this.type = type;
+		}
+
+		public CameraControlTask(CameraTaskType type, CapturedImageMetaData container) {
+			this.type = type;
+			this.container = container;
+		}
+
+		@Override
+		protected Void doInBackground(Void... params) {
+			return null;
+		}
+		
+		protected void onPostExecute(Void params) {
+			switch (this.type) {
+				case INITIALIZE:
+					cameraInitialize();
+					OLog.info("Camera initialization done");
+					break;
+				case CAPTURE:
+					if (container != null) {
+						cameraCapture(container);	
+					} else {
+						OLog.err("Invalid container for image capture data");
+					}
+					OLog.info("Camera capture done");
+					break;
+				case SHUTDOWN:
+					cameraShutdown();
+					OLog.info("Camera shutdown done");
+					break;
+				default:
+					OLog.err("Invalid Camera Control Task");
+					break;
+			}
+			
+			_cameraControlTask = null;
+			
+			return;
+		}
+		
+	}
+
+	/**********************************************************************/
+	/**  Private enums                                                   **/
+	/**********************************************************************/
 	private enum TaskStatus {
 		UNKNOWN, OK, ALREADY_STARTED, FAILED
+	}
+	
+	private enum CameraState {
+		INACTIVE, READY, BUSY 
 	}
 }

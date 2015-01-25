@@ -40,6 +40,7 @@ public class NetworkController extends AbstractController {
 	
 	private NetworkController(Activity parent) {
 		this._parentActivity = parent;
+		this.setState(ControllerState.UNKNOWN);
 	}
 	
 	public static NetworkController getInstance(Activity parent) {
@@ -55,22 +56,29 @@ public class NetworkController extends AbstractController {
 		_sendTaskQueue = new LinkedList<SendableData>();
 		_queueLock = new ReentrantLock();
 		
-		this.setState(ControllerState.READY);
+		this.setState(ControllerState.INACTIVE);
+
+		OLog.info("Network Controller Initialized");
 		
 		return Status.OK;
 	}
 	
 	public Status start() {
-		if ( this.getState() != ControllerState.READY ) {
+		OLog.info("NetController Start");
+		if ( this.getState() != ControllerState.INACTIVE ) {
 			OLog.err("Invalid State: " + this.getState());
 			return Status.FAILED;
 		}
 
 		this.initalizeSendTaskLoop();
 		
+		this.setState(ControllerState.READY);
+		
 		/* Run the send task loop */
-		_sendTaskLoopThread.run();
 		_sendThreadRunning = true;
+		_sendTaskLoopThread.start();
+		
+		OLog.info("Network Controller Started");
 		
 		return Status.OK;
 	}
@@ -83,29 +91,43 @@ public class NetworkController extends AbstractController {
 
 		this.destroySendTaskLoop();
 		
+		this.setState(ControllerState.INACTIVE);
+
+		OLog.info("Network Controller Stopped");
+		
 		return Status.OK;
 	}
 
 	@Override
 	public Status destroy() {
-		this.setState(ControllerState.INACTIVE);
+		this.setState(ControllerState.UNKNOWN);
 		
 		this.destroySendTaskLoop();
 		
 		/* Destroy the lock */
 		if (_queueLock != null) {
-			_queueLock.unlock();
+			if (_queueLock.tryLock()) {
+				try {
+					_queueLock.unlock();
+				} catch (Exception e) {
+					OLog.err("Unlock failed");
+				}
+			}
 		}
 		
 		/* Destroy the Task Queue */
-		_sendTaskQueue.clear();
-		_sendTaskQueue = null;
+		if (_sendTaskQueue != null) {
+			_sendTaskQueue.clear();
+			_sendTaskQueue = null;
+		}
+
+		OLog.info("Network Controller Destroyed");
 		
 		return null;
 	}
 	
 	public Status send(String url, HttpEncodableData data) {
-		if ((this.getState() != ControllerState.READY) ||
+		if ((this.getState() != ControllerState.READY) &&
 				(this.getState() != ControllerState.BUSY)) {
 			/* We can send during busy state too because of the queue */
 			OLog.err("Invalid state: " + this.getState());
@@ -137,6 +159,8 @@ public class NetworkController extends AbstractController {
 		if ( _sendTaskLoopThread != null ) {
 			_sendTaskLoopThread.interrupt();
 		}
+
+		OLog.info("Network Controller Send Task Added");
 		
 		return Status.OK;
 	}
@@ -182,6 +206,7 @@ public class NetworkController extends AbstractController {
 		}
 		
 		if (sendableData == null) {
+			OLog.err("SendableData is NULL");
 			return Status.FAILED;
 		}
 		
@@ -200,6 +225,7 @@ public class NetworkController extends AbstractController {
 			OLog.warn("Empty HttpResponse");
 		} catch (IOException e) {
 			OLog.err("HttpPost execution failed");
+			OLog.err("Msg: " + e.getMessage());
 			return Status.FAILED;
 		}
 		if ( httpResp == null) {
@@ -212,6 +238,13 @@ public class NetworkController extends AbstractController {
 		if (statusCode >= HTTP_ERROR_CODE_THRESHOLD) {
 			OLog.err("HttpResponse Error: " + statusCode + " - " + statusMsg);
 			return Status.FAILED;
+		}
+
+		OLog.info("Sent data to " + url);
+		try {
+			OLog.info("Contents: " + httpPost.getEntity().toString() );
+		} catch (Exception e) {
+			;
 		}
 		
 		return Status.OK;
@@ -240,8 +273,10 @@ public class NetworkController extends AbstractController {
 
 		@Override
 		public void run() {
-			while ( getState() == ControllerState.READY || 
+			OLog.info("Network Controller run task started");
+			while ( getState() == ControllerState.READY && 
 					_sendThreadRunning == true ) {
+				OLog.info("Network Controller run task loop start");
 				try {
 					Thread.sleep(5000);
 				} catch (InterruptedException e) {
@@ -253,7 +288,7 @@ public class NetworkController extends AbstractController {
 				 * 	so exit from that too since that might indicate an error */
 				if ( getState() != ControllerState.READY || 
 						_sendThreadRunning == false ) {
-					return;
+					break;
 				}
 				
 				_queueLock.lock();
@@ -267,7 +302,7 @@ public class NetworkController extends AbstractController {
 					
 					/* Send the data and remove it from the queue */
 					_queueLock.lock();
-					sendData(_sendTaskQueue.remove());
+					sendData(_sendTaskQueue.remove()); // TODO 
 					_queueLock.unlock();
 
 					/* Re-evaluate the size of the queue */
@@ -276,6 +311,9 @@ public class NetworkController extends AbstractController {
 					_queueLock.unlock();
 				}
 			}
+
+			OLog.err("Network Controller run task finished");
+			return;
 		}
 	}
 	

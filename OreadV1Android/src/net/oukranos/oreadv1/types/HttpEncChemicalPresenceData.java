@@ -22,10 +22,13 @@ public class HttpEncChemicalPresenceData extends ChemicalPresenceData implements
 	
 	@Override
 	public HttpEntity encodeDataToHttpEntity() {
+		String jsonStr = "";
 		MultipartEntity multipartContent = null;
+		
+		jsonStr = "{\"origin\":1, \"message\":\"test\", \"recordStatus\":\"ok\", \"dateRecorded\":" + System.currentTimeMillis() + "}\r\n";
 		try {
 			multipartContent = new MultipartEntity();
-	        multipartContent.addPart("message", new StringBody("test"));
+	        multipartContent.addPart("message", new StringBody(new String(jsonStr)));
 	        FileBody isb = new FileBody(new File(this.getCaptureFilePath() + "/" + this.getCaptureFileName()));                                                        
 	        multipartContent.addPart("picture", isb);
 		} catch (Exception e) {

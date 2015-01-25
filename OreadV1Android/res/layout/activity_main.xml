@@ -26,15 +26,23 @@
         android:id="@+id/fullscreen_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:paddingTop="75dip">
+	    
 	    <ListView
 	        android:id="@+id/sensor_data_list"
-	        android:layout_width="0dip"
+	        android:layout_width="fill_parent"
 	        android:layout_height="wrap_content"
 	        android:layout_marginLeft="@dimen/activity_horizontal_margin"
 	        android:layout_marginRight="@dimen/activity_horizontal_margin"
 	        android:layout_weight="1.0" />
+	    
+        <FrameLayout
+            android:id="@+id/camera_preview"
+            android:layout_width="fill_parent"
+            android:layout_height="30dp"
+            android:layout_weight="1"
+            android:visibility="invisible" />
     </LinearLayout>
 
     <!--

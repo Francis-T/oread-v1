@@ -1,8 +1,8 @@
 package net.oukranos.oreadv1.types;
 
-import net.oukranos.oreadv1.interfaces.ImageDataIntf;
+import net.oukranos.oreadv1.interfaces.CapturedImageMetaData;;
 
-public class ChemicalPresenceData extends ImageDataIntf {
+public class ChemicalPresenceData extends CapturedImageMetaData {
 	private int id = 0;
 	
 	public ChemicalPresenceData(int id) {

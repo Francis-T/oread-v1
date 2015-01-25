@@ -3,21 +3,30 @@ package net.oukranos.oreadv1.controller;
 import android.app.Activity;
 import net.oukranos.oreadv1.interfaces.AbstractController;
 import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
+import net.oukranos.oreadv1.types.ChemicalPresenceData;
 import net.oukranos.oreadv1.types.ControllerState;
+import net.oukranos.oreadv1.types.HttpEncChemicalPresenceData;
 import net.oukranos.oreadv1.types.HttpEncWaterQualityData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
 import net.oukranos.oreadv1.util.OLog;
 
 public class MainController extends AbstractController {
+	private static final String DEFAULT_DATA_SERVER_URL = "http://miningsensors.ateneo.edu:8080/uploadData";
+	private static final String DEFAULT_IMAGE_SERVER_URL = "http://miningsensors.ateneo.edu:8080/uploadImage";
+	
 	private static MainController _mainControllerInstance = null;
 	private Thread _controllerRunThread = null;
 	private Runnable _controllerRunTask = null;
 
 	private WaterQualityData _waterQualityData = null;
+	private boolean _waterQualityDataAvailable = false;
+	private ChemicalPresenceData _chemPresenceData = null;
+	private boolean _chemPresenceDataAvailable = false;
 	
 	private BluetoothController _bluetoothController = null;
 	private SensorArrayController _sensorArrayController = null;
+	private CameraController _cameraController = null;
 	private NetworkController _networkController = null;
 	
 	private MainControllerEventHandler _eventHandler = null;
@@ -92,7 +101,7 @@ public class MainController extends AbstractController {
 		try {
 			_controllerRunThread.join();
 		} catch (InterruptedException e) {
-			; /* No need to handle interrupts */
+			OLog.info("Controller Run Thread Interrupted");
 		}
 		
 		_controllerRunThread = null;
@@ -108,10 +117,6 @@ public class MainController extends AbstractController {
 			OLog.err("Failed to stop MainController");
 		}
 		
-		unloadSubControllers(_parentActivity);
-		if ( returnStatus != Status.OK ) {
-			OLog.err("Failed to unload subcontrollers");
-		}
 		return returnStatus;
 	}
 	
@@ -119,20 +124,13 @@ public class MainController extends AbstractController {
 		_eventHandler = handler;
 	}
 	
-	public Status getData(WaterQualityData container) {
-		if ( container == null ) {
-			OLog.err("Data container is null");
-			return Status.FAILED;
-		}
-		
+	public WaterQualityData getData() {
 		if ( _waterQualityData == null ) {
 			OLog.err("Data source is null");
-			return Status.FAILED;
+			return null;
 		}
 		
-		container = new WaterQualityData(_waterQualityData);
-		
-		return Status.OK;
+		return new WaterQualityData(_waterQualityData);
 	}
 	
 	
@@ -163,37 +161,44 @@ public class MainController extends AbstractController {
 	}
 	
 	private Status initializeSubControllers(Activity parent) {
+		/* Initialize data buffers */
+		_chemPresenceData = new ChemicalPresenceData(1);
+		_waterQualityData = new WaterQualityData(1);
+		
 		/* Initialize all sub-controllers here */
 		_bluetoothController = BluetoothController.getInstance(parent, null);
 		_networkController = NetworkController.getInstance(parent);
-		
-		_waterQualityData = new WaterQualityData(0);
+		_cameraController = CameraController.getInstance(parent, _chemPresenceData);
 		_sensorArrayController = SensorArrayController.getInstance(_bluetoothController, _waterQualityData);
-		
-		
-		_sensorArrayController.initialize();
-		_networkController.initialize();
-		_bluetoothController.initialize();
 		
 		return Status.OK;
 	}
 	
 	private Status unloadSubControllers(Activity parent) {
-		_sensorArrayController.destroy();
-		_waterQualityData = null;
+		/* Cleanup sub-controllers */
 		_bluetoothController.destroy();
+		_cameraController.destroy();
+		_networkController.destroy();
+		_sensorArrayController.destroy();
+
+		/* Cleanup data buffers */
+		_waterQualityData = null;
+		_chemPresenceData = null;
 		
 		return Status.OK;
 	}
 	
 	private Status startBluetoothController() {
-		OLog.info("Getting paired device names...");
+		OLog.info("Starting BluetoothController...");
+		
 		if (_bluetoothController == null) {
+			OLog.err("BluetoothController is NULL");
 			return Status.FAILED;
 		}
 		
 		_bluetoothController.initialize();
-		
+
+		OLog.info("Getting paired device names...");
 		if ( _bluetoothController.getPairedDeviceNames() == null ) {
 			OLog.err("Failed to get paired device names");
 			return Status.FAILED;
@@ -204,8 +209,40 @@ public class MainController extends AbstractController {
 			OLog.err("Failed to connect to device");
 			return Status.FAILED;
 		}
-		
+
+		OLog.info("BluetoothController started successfully");
 		return Status.OK;
+	}
+	
+	private Status startNetworkController() {
+		Status retStatus = Status.OK;
+		OLog.info("Starting NetworkController...");
+		switch (_networkController.getState()) {
+			case UNKNOWN:
+				retStatus = _networkController.initialize();
+				if ((retStatus == Status.FAILED) || 
+					(retStatus == Status.UNKNOWN)) {
+					OLog.err("Failed to initialize NetworkController");
+					_networkController.destroy();
+					return retStatus;
+				}
+				/* Allow fall-through since our goal is to get the Controller 
+				 * to the READY state */
+			case INACTIVE:
+				retStatus = _networkController.start();
+				if ((retStatus == Status.FAILED) || 
+					(retStatus == Status.UNKNOWN)) {
+					OLog.err("Failed to start NetworkController");
+					_networkController.destroy();
+					return retStatus;
+				}
+				break;
+			default:
+				OLog.info("NetworkController already started");
+				break;
+		}
+		OLog.info("NetworkController started successfully");
+		return retStatus;
 	}
 	
 	/* Inner Classes */
@@ -214,48 +251,90 @@ public class MainController extends AbstractController {
 		@Override
 		public void run() {
 			OLog.info("Run Task started");
-			while ( getState() == ControllerState.READY ) {
-				/* TODO Check state of BluetoothController */
-				/* TODO Check state of SensorController */
-				/* Check state of NetworkController */
-				if (_networkController.getState() != ControllerState.READY) {
-					_networkController.start();
+			
+			for (int i = 0; i < 20; i++) {
+				/* Start the network controller */
+				if (startNetworkController() != Status.OK) {
+					OLog.err("Failed to start network controller");
 				}
-				
-				
-				/* TODO CLEANUP LOGIC IN THIS PART */
-				if ( _bluetoothController.getState() == ControllerState.ACTIVE ) {
-					/* Pull data from water quality sensors */
-					OLog.info("Reading Sensor Data...");
-					if ( _sensorArrayController.readSensorData() == Status.OK ) {
-						_eventHandler.onDataAvailable();
-					}
-				} else {
-					startBluetoothController();
+
+				/* Start the Bluetooh controller */
+				if (startBluetoothController() != Status.OK) {
+					OLog.err("Failed to start Bluetooth controller");
+					break;
 				}
-				
-				/* TODO Upload sensor data to server */
-				if (_networkController.getState() == ControllerState.READY) {
-					_networkController.send("http://www.dummyurl.net/",
-							new HttpEncWaterQualityData(_waterQualityData));
+
+				/* Start the sensor array controller */
+				if (_sensorArrayController.initialize() == Status.FAILED) {
+					OLog.err("Failed to start sensor controller");
+					break;
 				}
-				
-				/* TODO Check state of CameraController */
-				/* TODO Pull data from the camera */
-				/* TODO Upload image data to server */
-				
+
+				/* Start the camera controller */
+				if (_cameraController.initialize() == Status.FAILED) {
+					OLog.err("Failed to start the camera controller"); 
+					break;
+				}
+
 				try {
-					Thread.sleep(1000);
+					Thread.sleep(1750);
 				} catch (InterruptedException e) {
 					/* This allows the running thread to be interrupted whenever
 					 * MainController.stop() is invoked by the UI */
 					OLog.info("Controller Run Thread Interrupted");
-					continue;
+				}
+				
+				/* Pull data from water quality sensors */
+				OLog.info("Reading Sensor Data...");
+				if ( _sensorArrayController.readSensorData() == Status.OK ) {
+					_waterQualityDataAvailable = true;
+					_eventHandler.onDataAvailable();
+				}
+
+				/* Upload sensor data to server */
+				if ( _waterQualityDataAvailable == true ) {
+					if ( _networkController.getState() == ControllerState.READY ) {
+						_networkController.send(DEFAULT_DATA_SERVER_URL,
+								new HttpEncWaterQualityData(_waterQualityData));	
+					}
+					_waterQualityDataAvailable = false;
+				}
+
+				/* Pull data from the phone's camera */
+				OLog.info("Capturing Chem Strip Image...");
+				if ( _cameraController.captureImage() == Status.OK ) {
+					_chemPresenceDataAvailable = true;
+				}
+
+				try {
+					Thread.sleep(1750);
+				} catch (InterruptedException e) {
+					/* This allows the running thread to be interrupted whenever
+					 * MainController.stop() is invoked by the UI */
+					OLog.info("Controller Run Thread Interrupted");
+				}
+				
+				/* Upload the chemical presence data to server */
+				if ( _chemPresenceDataAvailable == true ) {
+					if ( _networkController.getState() == ControllerState.READY ) {
+						_networkController.send( DEFAULT_IMAGE_SERVER_URL,
+								new HttpEncChemicalPresenceData(_chemPresenceData) );	
+					}
+					_chemPresenceDataAvailable = false;
+				}
+				
+				try {
+					Thread.sleep(7500);
+				} catch (InterruptedException e) {
+					/* This allows the running thread to be interrupted whenever
+					 * MainController.stop() is invoked by the UI */
+					OLog.info("Controller Run Thread Interrupted");
+					break;
 				}
 			}
-			_networkController.stop();
-			_networkController.destroy();
-			_bluetoothController.destroy();
+			
+			unloadSubControllers(_parentActivity);
+			
 			OLog.info("Run Task finished");
 		}
 	}

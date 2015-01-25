@@ -73,7 +73,7 @@ public class SensorArrayController extends AbstractController implements SensorE
 			return Status.FAILED;
 		}
 		
-		Sensor sensors[] = { _phSensor, _do2Sensor, _ecSensor, _tempSensor };
+		Sensor sensors[] = { _phSensor, _do2Sensor, _ecSensor}; //, _tempSensor };
 		
 		for (Sensor s : sensors) {
 			if (this.getState() == ControllerState.READY) {
@@ -94,6 +94,8 @@ public class SensorArrayController extends AbstractController implements SensorE
 			}
 			s.clearReceivedData();
 		}
+		
+		_sensorData.updateTimestamp();
 		
 		return Status.OK;
 	}
@@ -338,11 +340,11 @@ public class SensorArrayController extends AbstractController implements SensorE
 	}
 	
 	private class PHSensor extends Sensor {
-		private static final String READ_CMD_STR = "READ 0";
-		private static final String INFO_CMD_STR = "CMD 0 I";
-		private static final String CALIBRATE_PH_4_CMD_STR = "CMD 0 F";
-		private static final String CALIBRATE_PH_7_CMD_STR = "CMD 0 S";
-		private static final String CALIBRATE_PH_10_CMD_STR = "CMD 0 T";
+		private static final String READ_CMD_STR = "READ 1";
+		private static final String INFO_CMD_STR = "CMD 1 I";
+		private static final String CALIBRATE_PH_4_CMD_STR = "CMD 1 F";
+		private static final String CALIBRATE_PH_7_CMD_STR = "CMD 1 S";
+		private static final String CALIBRATE_PH_10_CMD_STR = "CMD 1 T";
 
 		public PHSensor(BluetoothController bluetooth) {
 			super(bluetooth);
@@ -405,9 +407,9 @@ public class SensorArrayController extends AbstractController implements SensorE
 	}
 	
 	private class DissolvedOxygenSensor extends Sensor {
-		private static final String READ_CMD_STR = "READ 1";
-		private static final String INFO_CMD_STR = "CMD 1 I";
-		private static final String CALIBRATE_DO_CMD_STR = "CMD 1 M";
+		private static final String READ_CMD_STR = "READ 2";
+		private static final String INFO_CMD_STR = "CMD 2 I";
+		private static final String CALIBRATE_DO_CMD_STR = "CMD 2 M";
 
 		public DissolvedOxygenSensor(BluetoothController bluetooth) {
 			super(bluetooth);
@@ -459,15 +461,15 @@ public class SensorArrayController extends AbstractController implements SensorE
 	}
 	
 	private class ConductivitySensor extends Sensor {
-		private static final String READ_CMD_STR = "READ 2";
-		private static final String INFO_CMD_STR = "CMD 2 I";
-		private static final String CALIBRATE_EC_DEFAULT_CMD_STR = "CMD 2 Z0";
-		private static final String CALIBRATE_EC_220_CMD_STR = "CMD 2 Z2";
-		private static final String CALIBRATE_EC_3000_CMD_STR = "CMD 2 Z30";
-		private static final String CALIBRATE_EC_10500_CMD_STR = "CMD 2 Z10";
-		private static final String CALIBRATE_EC_40000_CMD_STR = "CMD 2 Z40";
-		private static final String CALIBRATE_EC_62000_CMD_STR = "CMD 2 Z62";
-		private static final String CALIBRATE_EC_90000_CMD_STR = "CMD 2 Z90";
+		private static final String READ_CMD_STR = "READ 3";
+		private static final String INFO_CMD_STR = "CMD 3 I";
+		private static final String CALIBRATE_EC_DEFAULT_CMD_STR = "CMD 3 Z0";
+		private static final String CALIBRATE_EC_220_CMD_STR = "CMD 3 Z2";
+		private static final String CALIBRATE_EC_3000_CMD_STR = "CMD 3 Z30";
+		private static final String CALIBRATE_EC_10500_CMD_STR = "CMD 3 Z10";
+		private static final String CALIBRATE_EC_40000_CMD_STR = "CMD 3 Z40";
+		private static final String CALIBRATE_EC_62000_CMD_STR = "CMD 3 Z62";
+		private static final String CALIBRATE_EC_90000_CMD_STR = "CMD 3 Z90";
 
 		public ConductivitySensor(BluetoothController bluetooth) {
 			super(bluetooth);
