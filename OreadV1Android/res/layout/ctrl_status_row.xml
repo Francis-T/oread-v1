@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="5dip"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/ctrl_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="system.null"
+        android:textColor="#040404"
+        android:textSize="15dip"
+        android:textStyle="bold"
+        android:typeface="sans" />
+
+    <LinearLayout
+        android:id="@+id/ctrl_panel_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="false">
+        <LinearLayout
+            android:id="@+id/panel_state"
+            android:layout_width="0dip"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/lbl_state"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dip"
+                android:text="State: "
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+            <TextView
+                android:id="@+id/txt_state"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginTop="5dip"
+                android:text="UNKNOWN"
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />           
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/panel_status"
+            android:layout_width="0dip"
+            android:layout_height="wrap_content"
+            android:layout_weight="1">
+            <TextView
+                android:id="@+id/lbl_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dip"
+                android:text="Last Result: "
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+            <TextView
+                android:id="@+id/txt_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginTop="5dip"
+                android:text="UNKNOWN"
+                android:textColor="#040404"
+                android:textSize="12dip"
+                android:typeface="sans" />
+        </LinearLayout>
+    </LinearLayout>
+    
+    <TextView
+        android:id="@+id/txt_cmd"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:layout_marginTop="5dip"
+        android:layout_weight="1"
+        android:text="No last command data"
+        android:textColor="#040404"
+        android:textSize="12dip"
+        android:textStyle="italic"
+        android:typeface="sans" />
+
+</LinearLayout>

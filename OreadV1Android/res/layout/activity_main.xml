@@ -1,86 +1,15 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main_activity_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0099cc"
+    android:background="#ff000000"
     tools:context="net.oukranos.oreadv1.MainActivity" >
-
-    <!--
-         The primary full-screen view. This can be replaced with whatever view
-         is needed to present your content, e.g. VideoView, SurfaceView,
-         TextureView, etc.
-    -->
-
-    <!-- TextView
-        android:id="@+id/fullscreen_content"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:keepScreenOn="true"
-        android:text="@string/dummy_content"
-        android:textColor="#33b5e5"
-        android:textSize="50sp"
-        android:textStyle="bold" /-->
-
-    <LinearLayout
-        android:id="@+id/fullscreen_content"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:paddingTop="75dip">
-	    
-	    <ListView
-	        android:id="@+id/sensor_data_list"
-	        android:layout_width="fill_parent"
-	        android:layout_height="wrap_content"
-	        android:layout_marginLeft="@dimen/activity_horizontal_margin"
-	        android:layout_marginRight="@dimen/activity_horizontal_margin"
-	        android:layout_weight="1.0" />
-	    
-        <FrameLayout
-            android:id="@+id/camera_preview"
-            android:layout_width="fill_parent"
-            android:layout_height="30dp"
-            android:layout_weight="1"
-            android:visibility="invisible" />
-    </LinearLayout>
-
-    <!--
-         This FrameLayout insets its children based on system windows using
-         android:fitsSystemWindows.
-    -->
-
+    
+    <!-- Placeholder layout to be replaced with Fragments -->
     <FrameLayout
+        android:id="@+id/placeholder"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:fitsSystemWindows="true" >
-
-        <LinearLayout
-            android:id="@+id/fullscreen_content_controls"
-            style="?metaButtonBarStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom|center_horizontal"
-            android:background="@color/black_overlay"
-            android:orientation="horizontal"
-            tools:ignore="UselessParent" >
-
-            <Button
-                android:id="@+id/start_button"
-                style="?metaButtonBarButtonStyle"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/start_button" />
-	        <Button
-	            android:id="@+id/stop_button"
-	            style="?metaButtonBarButtonStyle"
-	            android:layout_width="0dp"
-	            android:layout_height="wrap_content"
-                android:layout_weight="1"
-	            android:text="@string/stop_button" />
-        </LinearLayout>
-
-    </FrameLayout>
+        android:layout_height="match_parent"/>
 
 </FrameLayout>

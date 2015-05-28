@@ -6,5 +6,28 @@
     <string name="dummy_content">DUMMY\nCONTENT</string>
     <string name="start_button">Start</string>
     <string name="stop_button">Stop</string>
+    <string name="lbl_sensor_readings">Sensor Readings</string>
+    <string name="blank_data_placeholder">---</string>
+    <string name="lbl_ph">pH</string>
+    <string name="lbl_do2">DO2</string>
+    <string name="lbl_cond">Cond</string>
+    <string name="lbl_temp">Temp</string>
+    <string name="lbl_turb">Turb</string>
+    <string-array name="calib_modes">
+        <item> </item>
+        <item>pH  - clear calibration</item>
+        <item>pH  - low calibration</item>
+        <item>pH  - mid calibration</item>
+        <item>pH  - high calibration</item>
+        <item>DO2 - clear calibration</item>
+        <item>DO2 - air calibration</item>
+        <item>DO2 - zero calibration</item>
+        <item>EC  - clear calibration</item>
+        <item>EC  - dry calibration</item>
+        <item>EC  - single calibration</item>
+        <item>EC  - low calibration</item>
+        <item>EC  - high calibration</item>
+        <item>TEMP - manual calibration</item>
+    </string-array>
 
 </resources>

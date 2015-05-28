@@ -1,8 +1,8 @@
 package net.oukranos.oreadv1.types;
 
 public class WaterQualityData {
-	private int id = 0;
-	private long timestamp = 0;
+	protected int id = 0;
+	protected long timestamp = 0;
 	
 	public double pH = 0.0;
 	public double dissolved_oxygen = 0.0;
@@ -10,6 +10,7 @@ public class WaterQualityData {
 	public double temperature = 0.0;
 	public double tds = 0.0;
 	public double salinity = 0.0;
+	public double turbidity = 0.0;
 	
 	public WaterQualityData(int id) {
 		this.id = id;
@@ -20,6 +21,7 @@ public class WaterQualityData {
 		this.tds = 0.0;
 		this.salinity = 0.0;
 		this.timestamp = 0;
+		this.turbidity = 0.0;
 		
 		return;
 	}
@@ -36,6 +38,7 @@ public class WaterQualityData {
 		this.temperature 		= data.temperature;
 		this.tds 				= data.tds;
 		this.salinity 			= data.salinity;
+		this.turbidity			= data.turbidity;
 		this.timestamp			= data.getTimestamp();
 		
 		return;
@@ -47,6 +50,11 @@ public class WaterQualityData {
 	
 	public long getTimestamp() {
 		return this.timestamp;
+	}
+	
+	public void setTimestamp(long timestamp) {
+		this.timestamp = timestamp;
+		return;
 	}
 	
 	public void updateTimestamp() {

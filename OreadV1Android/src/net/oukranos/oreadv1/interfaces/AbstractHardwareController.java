@@ -5,7 +5,7 @@ import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.util.OLog;
 
-public abstract class AbstractController {
+public abstract class AbstractHardwareController {
 	protected String _name = "controller";
 	protected String _type = "unknown";
 	private ControllerState _state = ControllerState.UNKNOWN;
@@ -39,7 +39,7 @@ public abstract class AbstractController {
 		return this._logData;
 	}
 	
-	public ControllerStatus getControllerStatus() {
+	protected ControllerStatus getControllerStatus() {
 		return (new ControllerStatus(this.getName(), this.getType(), 
 				this.getState(), this.getLastCmdStatus(), this.getLogData()));
 	}
