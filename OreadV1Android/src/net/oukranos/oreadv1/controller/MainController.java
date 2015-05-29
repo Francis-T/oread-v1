@@ -439,6 +439,19 @@ public class MainController extends AbstractController {
 		OLog.info("NetworkController started successfully");
 		return retStatus;
 	}
+
+    private void notifyRunTaskFinished() {
+        if ( _eventHandlers == null ) {
+            return;
+        }
+
+        /* Notify all event handlers */
+        for ( MainControllerEventHandler ev : _eventHandlers ) {
+            ev.onRunTaskFinished();
+        }
+
+        return;
+    }
 	
 	/*******************/
 	/** Inner Classes **/
@@ -584,7 +597,8 @@ public class MainController extends AbstractController {
 //				}
 //			}
 //			
-			
+		    /* Notify all event handlers that the run task is finished */
+            notifyRunTaskFinished();
 			OLog.info("Run Task finished");
 		}
 	}

@@ -41,6 +41,7 @@ public class SiteDeviceReportData implements JsonEncodableData {
 		return this._errMsg;
 	}
 
+    @Override
 	public String encodeToJsonString() {
 		JSONObject request = new JSONObject();
 		try {
@@ -51,12 +52,13 @@ public class SiteDeviceReportData implements JsonEncodableData {
 			request.put("errMsg", 		this._errMsg);
 		} catch (JSONException e) {
 			System.out.println("Encode data to JSON failed");
-			return null;
+			return "";
 		}
 		
 		return request.toString();
 	}
 
+    @Override
 	public JSONObject encodeToJson() {
 		JSONObject request = new JSONObject();
 		try {

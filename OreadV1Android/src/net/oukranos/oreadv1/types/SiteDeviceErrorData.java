@@ -1,6 +1,11 @@
 package net.oukranos.oreadv1.types;
 
-public class SiteDeviceErrorData {
+import net.oukranos.oreadv1.interfaces.JsonEncodableData;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+public class SiteDeviceErrorData implements JsonEncodableData {
 	private String _device = "";
 	private String _message = "";
 	
@@ -17,5 +22,33 @@ public class SiteDeviceErrorData {
 	public String getMessage() {
 		return this._message;
 	}
+
+    @Override
+	public String encodeToJsonString() {
+		JSONObject request = new JSONObject();
+		try {
+			request.put("device",   this._device);
+			request.put("message", 	this._message);
+		} catch (JSONException e) {
+			System.out.println("Encode data to JSON failed");
+			return "";
+		}
+		
+		return request.toString();
+    }
+
+    @Override
+	public JSONObject encodeToJson() {
+		JSONObject request = new JSONObject();
+		try {
+			request.put("device",   this._device);
+			request.put("message", 	this._message);
+		} catch (JSONException e) {
+			System.out.println("Encode data to JSON failed");
+			return null; 
+		}
+		
+		return request;
+    }
 }
 

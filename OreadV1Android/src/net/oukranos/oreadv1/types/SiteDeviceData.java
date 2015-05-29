@@ -53,17 +53,21 @@ public class SiteDeviceData implements JsonEncodableData {
 			request.put("context", _context);
 			
 			
-			JSONArray arr = new JSONArray();
+			JSONArray reportDataArr = new JSONArray();
 			for (SiteDeviceReportData rd : _reportDataList) {
-				arr.put(rd.encodeToJson());
+				reportDataArr.put(rd.encodeToJson());
 			}
-			
-			request.put("reportData", arr);
+			request.put("reportData", reportDataArr);
+
+			JSONArray errDataArr = new JSONArray();
+			for (SiteDeviceErrorData ed : _errorDataList) {
+				errDataArr.put(ed.encodeToJson());
+			}
+			request.putOpt("errorData", errDataArr);
 			
 		} catch (JSONException e) {
 			e.printStackTrace();
 		}
-		
 		
 		return request.toString();
 	}

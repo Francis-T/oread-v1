@@ -51,9 +51,26 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	private Thread _cameraCaptureThread = null;
 	private WindowManager _wm = null;
 	
+    private String _originator = null; 
+    private String _directive = null;
 	private Object _wqDataLock = new Object();
 	private OreadServiceWaterQualityData _wqData = null;
 	private List<OreadServiceListener> _serviceListeners = new ArrayList<OreadServiceListener>();
+
+    @Override
+    public void onStartCommand(Intent intent, int flags, int startId) {
+        _originator = intent.getStringExtra("net.oukranos.oreadv1.EXTRA_ORIGIN_NAME");
+        _directive = intent.getStringExtra("net.oukranos.oreadv1.EXTRA_DIRECTIVE");
+
+        /* If the originator is the designated Wake Receiver then it must be assumed
+         *  the service was activated automatically by the alarm. Therefore, the
+         *  service must automatically 'activate' the service by starting the 
+         *  MainController */
+        if ( this.isWakeTriggered() == true ) {
+            activateService();
+        }
+        return;
+    }
 
 	@Override
 	public IBinder onBind(Intent intent) {
@@ -104,6 +121,20 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		
 		return;
 	}
+
+    @Override
+    public void onRunTaskFinished() {
+        if ( this.isWakeTriggered() == true ) {
+            deactivateService();
+        }
+
+        /* Schedule the next wake-up time */
+        OLog.info("Scheduling next wake-up time...");
+        OreadServiceWakeReceiver rcvr = new OreadServiceWakeReceiver();
+        rcvr.setAlarm(this);
+
+        return;
+    }
 	
 
 	/**********************************************************************/
@@ -117,15 +148,52 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		}
 		return Status.OK;
 	}
+
+    private boolean isWakeTriggered() {
+        if ( !_originator.equals(OreadServiceWakeReceiver.class.getName()) ) {
+            return false;
+        }
+
+        if ( !_directive.equals("RunContinuous") ) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private void activateService() {
+        initializeMainController();
+        
+        if (_mainController.getState() == ControllerState.UNKNOWN) {
+            _mainController.start();
+            
+            OLog.info("OreadService MainController Started");
+        }
+
+        return;
+    }
 	
-	private Status destroyMainController() {
+    private void deactivateService() {
+        if (_mainController == null) {
+            return;
+        }
+        
+        if (_mainController.getState() != ControllerState.UNKNOWN) {
+            _mainController.stop();
+            
+            OLog.info("OreadService MainController Stopped");
+        }
+
+        return;
+    }
+
+    private Status destroyMainController() {
 		if (_mainController != null) {
 			_mainController.destroy();
 			_mainController = null;
 		}
 		return Status.OK;
 	}
-	
 
 	/********************/
 	/** Camera Methods **/
@@ -466,27 +534,13 @@ public class OreadService extends Service implements MainControllerEventHandler,
 
 		@Override
 		public void start() throws RemoteException {
-			initializeMainController();
-			
-			if (_mainController.getState() == ControllerState.UNKNOWN) {
-				_mainController.start();
-				
-				OLog.info("OreadService MainController Started");
-			}
+            activateService();
 			return;
 		}
 
 		@Override
 		public void stop() throws RemoteException {
-			if (_mainController == null) {
-				return;
-			}
-			
-			if (_mainController.getState() != ControllerState.UNKNOWN) {
-				_mainController.stop();
-				
-				OLog.info("OreadService MainController Stopped");
-			}
+            deactivateService();
 			return;
 		}
 
@@ -524,5 +578,5 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	private enum CameraState {
 		INACTIVE, READY, BUSY 
 	}
-
 }
+
