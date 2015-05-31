@@ -41,24 +41,17 @@ public class SiteDeviceReportData implements JsonEncodableData {
 		return this._errMsg;
 	}
 
-    @Override
+	@Override
 	public String encodeToJsonString() {
-		JSONObject request = new JSONObject();
-		try {
-			request.put("dateRecorded", this.getTimestamp());
-			request.put("readingOf", 	this._type);
-			request.put("units", 		this._units);
-			request.put("value", 		this._value);
-			request.put("errMsg", 		this._errMsg);
-		} catch (JSONException e) {
-			System.out.println("Encode data to JSON failed");
+		JSONObject request = encodeToJson();
+		if (request == null) {
 			return "";
 		}
 		
 		return request.toString();
 	}
 
-    @Override
+	@Override
 	public JSONObject encodeToJson() {
 		JSONObject request = new JSONObject();
 		try {

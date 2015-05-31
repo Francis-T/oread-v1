@@ -111,4 +111,51 @@ public class MainControllerInfo {
 		return null;
 		
 	}
+	
+	public AbstractController getSubController(String commandString) {
+		if (commandString == null) {
+			return null;
+		}
+
+		/* Break apart the commandString */
+		String cmdStrArr[] = commandString.split("\\.");
+		if (cmdStrArr.length < 2) {
+			OLog.info("Invalid length: " + cmdStrArr.length);
+			return null;
+		}
+		
+		if ((cmdStrArr[0] == null) || (cmdStrArr[1] == null))  {
+			return null;
+		}
+		
+		String name = cmdStrArr[1];
+		String type = cmdStrArr[0];
+		
+		if ((name == null) || (type == null)) {
+			OLog.err("Invalid input parameter/s");
+			return null;
+		}
+		
+		if (name.isEmpty() || type.isEmpty()) {
+			OLog.err("Invalid input parameter/s");
+			return null;
+		}
+		
+		if (_subcontrollers == null) {
+			OLog.err("List uninitialized or unavailable");
+			return null;
+		}
+		
+		/* Return the matching subcontroller */
+		for (AbstractController c : _subcontrollers) {
+			if ( name.equals(c.getName()) && type.equals(c.getType())) {
+				return c;
+			}
+		}
+
+		/* If no such subcontroller exists, return a failure status */
+		OLog.err("Failed to locate subcontroller: " + type + "." + name );
+		return null;
+		
+	}
 }

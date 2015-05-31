@@ -1,15 +1,20 @@
 package net.oukranos.oreadv1.types;
 
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.http.HttpEntity;
+import org.apache.http.entity.StringEntity;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import net.oukranos.oreadv1.interfaces.HttpEncodableData;
 import net.oukranos.oreadv1.interfaces.JsonEncodableData;
+import net.oukranos.oreadv1.util.OLog;
 
-public class SiteDeviceData implements JsonEncodableData {
+public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 	private String _siteDeviceId = "";
 	private String _context = "";
 	private List<SiteDeviceReportData> _reportDataList = null;
@@ -35,6 +40,13 @@ public class SiteDeviceData implements JsonEncodableData {
 		return;
 	}
 	
+	public void clearReportData() {
+		if (_reportDataList != null) {
+			_reportDataList.clear();
+		}
+		return;
+	}
+	
 	public void addErrorData(SiteDeviceErrorData data) {
 		if (data == null) {
 			return;
@@ -44,8 +56,26 @@ public class SiteDeviceData implements JsonEncodableData {
 		
 		return;
 	}
+	
+	public void clearErrorData() {
+		if (_errorDataList != null) {
+			_errorDataList.clear();
+		}
+		return;
+	}
 
+	@Override
 	public String encodeToJsonString() {
+		JSONObject request = encodeToJson();
+		if (request == null) {
+			return "";
+		}
+		
+		return request.toString();
+	}
+
+	@Override
+	public JSONObject encodeToJson() {
 		JSONObject request = new JSONObject();
 		
 		try {
@@ -66,16 +96,10 @@ public class SiteDeviceData implements JsonEncodableData {
 			request.putOpt("errorData", errDataArr);
 			
 		} catch (JSONException e) {
-			e.printStackTrace();
+			return null;
 		}
 		
-		return request.toString();
-	}
-
-	@Override
-	public JSONObject encodeToJson() {
-		// TODO Auto-generated method stub
-		return null;
+		return request;
 	}
 
 	
@@ -93,5 +117,27 @@ public class SiteDeviceData implements JsonEncodableData {
 		System.out.println("Result: " + sdat.encodeToJsonString());
 		
 		return;
+	}
+
+	@Override
+	public HttpEntity encodeDataToHttpEntity() {
+		JSONObject request  = encodeToJson();
+		
+		if (request == null) {
+			OLog.err("Failed to get HttpDataEntity");
+			return null;
+		}
+
+		HttpEntity e = null;
+		try {
+			e = new StringEntity(request.toString() + "\r\n");
+		} catch (UnsupportedEncodingException e1) {
+			OLog.err("Generate HttpEntity failed");
+			return null;
+		}
+		
+		OLog.info("(SiteDeviceData) Message: " + ((StringEntity)e).toString() );
+		
+		return e;
 	}
 }

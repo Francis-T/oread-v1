@@ -157,20 +157,17 @@ public class MainActivity extends Activity {
 		@Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
                 float velocityY) {
-			Log.d("DEBUG", "Swipe event caught.");
 			float startX = e1.getX();
 			float endX = e2.getX();
 			float dist = getAbsDistance(startX, endX);
 			
 			// Leftward swipe
 			if ( ( startX > endX ) && (dist > THRESHOLD_SWIPE_DISTANCE) ) {
-				Log.d("DEBUG", "Swipe event left.");
 				loadFragment(OreadFragment.CALIBRATION);
 			}
 			
 			// Rightward swipe
 			if ( ( startX < endX ) && (dist > THRESHOLD_SWIPE_DISTANCE) ) {
-				Log.d("DEBUG", "Swipe event right.");
 				loadFragment(OreadFragment.READING);
 			}
 			

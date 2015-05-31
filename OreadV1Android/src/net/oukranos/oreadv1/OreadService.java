@@ -51,26 +51,16 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	private Thread _cameraCaptureThread = null;
 	private WindowManager _wm = null;
 	
-    private String _originator = null; 
-    private String _directive = null;
+	private String _originator = null;
+	private String _directive = null;
+	OreadServiceWakeReceiver _wakeAlarm = null;
 	private Object _wqDataLock = new Object();
 	private OreadServiceWaterQualityData _wqData = null;
 	private List<OreadServiceListener> _serviceListeners = new ArrayList<OreadServiceListener>();
-
-    @Override
-    public void onStartCommand(Intent intent, int flags, int startId) {
-        _originator = intent.getStringExtra("net.oukranos.oreadv1.EXTRA_ORIGIN_NAME");
-        _directive = intent.getStringExtra("net.oukranos.oreadv1.EXTRA_DIRECTIVE");
-
-        /* If the originator is the designated Wake Receiver then it must be assumed
-         *  the service was activated automatically by the alarm. Therefore, the
-         *  service must automatically 'activate' the service by starting the 
-         *  MainController */
-        if ( this.isWakeTriggered() == true ) {
-            activateService();
-        }
-        return;
-    }
+	
+	/* State variables */
+	private ServiceState _state = ServiceState.UNKNOWN;
+	private boolean _isServiceBound = false;
 
 	@Override
 	public IBinder onBind(Intent intent) {
@@ -79,12 +69,42 @@ public class OreadService extends Service implements MainControllerEventHandler,
 			return _apiEndpoint;
 		}
 		
+		_isServiceBound = true;
+		
 		return null;
+	}
+	
+	@Override
+	public int onStartCommand(Intent intent, int flags, int startId) {
+		OLog.info("OreadService onStartCommand() invoked");
+		if (intent == null) {
+			OLog.info("OreadService onStartCommand() finished prematurely");
+			return super.onStartCommand(intent, flags, startId);
+		}
+
+		_state = ServiceState.STARTED;
+		
+		/* Obtain the originator and directive variables from the intent */
+		_originator = intent.getStringExtra(OreadServiceWakeReceiver.EXTRA_ORIGINATOR);
+		_directive = intent.getStringExtra(OreadServiceWakeReceiver.EXTRA_DIRECTIVE);
+		
+		/* If the service was triggered by the OreadService Wake alarm, then the
+		 *   service has to automatically activate the MainController */
+		if ( this.isWakeTriggered() == true ) {
+			OLog.info("OreadService onStartCommand() triggers service activation");
+			activateService();
+			_state = ServiceState.ACTIVE;
+		}
+		
+		OLog.info("OreadService onStartCommand() finished");
+		return super.onStartCommand(intent, flags, startId);
 	}
 	
 	@Override
 	public void onCreate() {
 		super.onCreate();
+		
+		_state = ServiceState.UNKNOWN;
 		
 		/* Initialize the main controller upon creation */
 		initializeMainController();
@@ -94,8 +114,21 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	}
 	
 	@Override
+	public boolean onUnbind(Intent intent) {
+		_isServiceBound = false;
+		
+		return super.onUnbind(intent);
+	}
+	
+	@Override
 	public void onDestroy() {
 		super.onDestroy();
+		
+		_originator = null;
+		_directive = null;
+		
+		/* Attempt to deactivate the service if possible */
+		deactivateService();
 		
 		/* Destroy the main controller */
 		destroyMainController();
@@ -122,19 +155,34 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		return;
 	}
 
-    @Override
-    public void onRunTaskFinished() {
-        if ( this.isWakeTriggered() == true ) {
-            deactivateService();
-        }
+	@Override
+	public void onFinish() {
+		_originator = null;
+		_directive = null;
+		
+		/* Attempt to deactivate the service if possible */
+		deactivateService();
+		
+		/* Schedule the next wake up event before terminating */
+		if (this._state == ServiceState.ACTIVE) {
+			scheduleNextWakeUpEvent();
+		}
 
-        /* Schedule the next wake-up time */
-        OLog.info("Scheduling next wake-up time...");
-        OreadServiceWakeReceiver rcvr = new OreadServiceWakeReceiver();
-        rcvr.setAlarm(this);
-
-        return;
-    }
+		/* If OreadService has been started by a wake trigger, then close the service
+		 *   once the MainController's task is finished. */
+		if (this.isWakeTriggered()) {
+			
+			/* If the service is no longer bound to an app, then the service can
+			 * be fully closed while waiting for the next wake trigger */
+			if (!_isServiceBound) {
+				stopSelf();
+			}
+		}
+		
+		this._state = ServiceState.UNKNOWN;
+		
+		return;
+	}
 	
 
 	/**********************************************************************/
@@ -150,18 +198,22 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	}
 
     private boolean isWakeTriggered() {
-        if ( !_originator.equals(OreadServiceWakeReceiver.class.getName()) ) {
+        if ( (_originator == null) || (_directive == null) ) {
             return false;
         }
-
-        if ( !_directive.equals("RunContinuous") ) {
-            return false;
+        
+        if (!_originator.equals(OreadServiceWakeReceiver.ORIGINATOR_ID)) {
+        	return false;
+        }
+        
+        if (!_directive.equals(OreadServiceWakeReceiver.DIRECTIVE_ID)) {
+        	return false;
         }
 
         return true;
     }
 
-    private void activateService() {
+    private Status activateService() {
         initializeMainController();
         
         if (_mainController.getState() == ControllerState.UNKNOWN) {
@@ -169,31 +221,52 @@ public class OreadService extends Service implements MainControllerEventHandler,
             
             OLog.info("OreadService MainController Started");
         }
-
-        return;
-    }
-	
-    private void deactivateService() {
-        if (_mainController == null) {
-            return;
-        }
         
-        if (_mainController.getState() != ControllerState.UNKNOWN) {
-            _mainController.stop();
-            
-            OLog.info("OreadService MainController Stopped");
-        }
+		_state = ServiceState.ACTIVE;
+        
+		return Status.OK;
+    } 
 
-        return;
+    private Status scheduleNextWakeUpEvent() {
+    	Long sleepInterval = _mainController.getSleepInterval();
+    	
+    	_wakeAlarm = new OreadServiceWakeReceiver();
+    	_wakeAlarm.setAlarm(this, sleepInterval);
+    	
+    	return Status.OK;
     }
 
-    private Status destroyMainController() {
+    private Status unscheduleNextWakeUpEvent() {
+    	if (_wakeAlarm == null) {
+    		_wakeAlarm = new OreadServiceWakeReceiver();
+    	}
+    	_wakeAlarm.cancelAlarm(this);
+    	
+    	return Status.OK;
+    }
+
+    private Status deactivateService() {
+		if (_mainController == null) {
+			return Status.OK;
+		}
+		
+		if (_mainController.getState() != ControllerState.UNKNOWN) {
+			_mainController.stop();
+			
+			OLog.info("OreadService MainController Stopped");
+		}
+		
+		return Status.OK;
+    }
+
+	private Status destroyMainController() {
 		if (_mainController != null) {
 			_mainController.destroy();
 			_mainController = null;
 		}
 		return Status.OK;
 	}
+	
 
 	/********************/
 	/** Camera Methods **/
@@ -534,13 +607,25 @@ public class OreadService extends Service implements MainControllerEventHandler,
 
 		@Override
 		public void start() throws RemoteException {
-            activateService();
+			if (activateService() != Status.OK) {
+				OLog.err("OreadService API Start Failed");
+			}
+    		
+    		_state = ServiceState.ACTIVE;
+    		
 			return;
 		}
 
 		@Override
 		public void stop() throws RemoteException {
-            deactivateService();
+            if (deactivateService() != Status.OK) {
+                OLog.err("OreadService API Stop Failed");
+            }
+    		
+    		_state = ServiceState.STOPPED; 
+    		
+    		unscheduleNextWakeUpEvent();
+    		
 			return;
 		}
 
@@ -578,5 +663,8 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	private enum CameraState {
 		INACTIVE, READY, BUSY 
 	}
-}
 
+	private enum ServiceState { 
+		UNKNOWN, STARTED, ACTIVE, STOPPED
+	};
+}

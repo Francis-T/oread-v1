@@ -138,7 +138,7 @@ public class NetworkController extends AbstractController {
 		}
 		
 		/* Get the command portion of the string */
-		int shortCmdStartIdx = cmdStr.lastIndexOf('.');
+		int shortCmdStartIdx = cmdStr.lastIndexOf('.') + 1;
 		/* Check if the last index is sane */
 		if (shortCmdStartIdx < 0) {
 			this.writeErr("Could not extract command");
@@ -156,6 +156,36 @@ public class NetworkController extends AbstractController {
 		} else if (shortCmdStr.equals("stop") == true) {
 			this.stop();
 		} else if (shortCmdStr.equals("uploadData") == true) {
+			/* Separate the param string into two elements via ',' */
+			String paramArr[] = paramStr.split(",");
+			if (paramArr.length != 2) {
+				this.writeErr("Invalid number of params");
+				return this.getControllerStatus();
+			}
+
+			/* Get a DataStore reference and retrieve the req'd objects */
+			DataStore ds = _mainInfo.getDataStore();
+			if (ds == null) {
+				this.writeErr("DataStore uninitialized or unavailable");
+				return this.getControllerStatus();
+			}
+			
+			DataStoreObject httpData = ds.retrieve(paramArr[0]);
+			DataStoreObject encData = ds.retrieve(paramArr[1]);
+			
+			if ((httpData == null) || (encData == null)) {
+				this.writeErr("Could not retrieve data object");
+				return this.getControllerStatus();
+			}
+			
+			/* TODO Verify the data type here as well */
+			
+			String httpStr = (String) httpData.getObject(); 
+			HttpEncodableData encodedData = (HttpEncodableData) encData.getObject();
+			
+			/* Send the data */
+			this.send(httpStr, encodedData);
+		} else if (shortCmdStr.equals("uploadDataNew") == true) {
 			/* Separate the param string into two elements via ',' */
 			String paramArr[] = paramStr.split(",");
 			if (paramArr.length != 2) {

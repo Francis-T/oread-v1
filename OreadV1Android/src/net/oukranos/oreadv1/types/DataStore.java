@@ -3,6 +3,8 @@ package net.oukranos.oreadv1.types;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.util.Log;
+
 import net.oukranos.oreadv1.util.OLog;
 
 public class DataStore {
@@ -32,7 +34,7 @@ public class DataStore {
 		/* Check if there is already a duplicate identifier */
 		for (DataStoreObject d : _dataList) {
 			if (id.equals(d.getId()) == true) {
-				OLog.err("Duplicate id exists");
+				OLog.err("Duplicate id exists: " + d.getId());
 				return Status.FAILED;
 			}
 		}
@@ -99,6 +101,7 @@ public class DataStore {
 
 		/* Return the object matching the given identifier */
 		for (DataStoreObject dataObj : _dataList) {
+			Log.d("DEBUG", "Found object: " + dataObj.getId());
 			if (id.equals(dataObj.getId()) == true) {
 				return dataObj;
 			}

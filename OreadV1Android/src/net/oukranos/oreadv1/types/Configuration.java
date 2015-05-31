@@ -3,6 +3,8 @@ package net.oukranos.oreadv1.types;
 import java.util.List;
 import java.util.ArrayList;
 
+import net.oukranos.oreadv1.util.OLog;
+
 public class Configuration {
     private String _id = "";
     private List<Module> _moduleList = null;
@@ -104,6 +106,7 @@ public class Configuration {
 
         _dataList.add(new Data(id, type, value));
 
+        OLog.info("Added Data: " + id + ", " + type + ", " + value);
     	return Status.OK;
     }
 
@@ -156,6 +159,10 @@ public class Configuration {
         	}
         }
         return null;
+    }
+    
+    public List<Data> getDataList() {
+    	return this._dataList;
     }
     
     public String toString() {

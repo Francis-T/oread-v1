@@ -10,8 +10,12 @@ import net.oukranos.oreadv1.types.ChemicalPresenceData;
 import net.oukranos.oreadv1.types.Configuration;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.ControllerStatus;
+import net.oukranos.oreadv1.types.Data;
 import net.oukranos.oreadv1.types.DataStore;
+import net.oukranos.oreadv1.types.DataStoreObject;
 import net.oukranos.oreadv1.types.MainControllerInfo;
+import net.oukranos.oreadv1.types.SiteDeviceData;
+import net.oukranos.oreadv1.types.SiteDeviceReportData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.Task;
 import net.oukranos.oreadv1.types.WaterQualityData;
@@ -24,6 +28,8 @@ public class MainController extends AbstractController {
 	@SuppressWarnings("unused")
 	private static final String DEFAULT_IMAGE_SERVER_URL = "http://miningsensors.ateneo.edu:8080/uploadImage";
 	
+	public static final long DEFAULT_SLEEP_INTERVAL = 900000; /* 15m * 60s * 1000ms = 900000 ms */
+	
 	private static MainController _mainControllerInstance = null;
 	private Thread _controllerRunThread = null;
 	private Runnable _controllerRunTask = null;
@@ -34,6 +40,7 @@ public class MainController extends AbstractController {
 	private ChemicalPresenceData _chemPresenceData = null;
 	@SuppressWarnings("unused")
 	private boolean _chemPresenceDataAvailable = false;
+	private SiteDeviceData _siteDeviceData = null;
 	
 	private BluetoothController _bluetoothController = null;
 	private SensorArrayController _sensorArrayController = null;
@@ -59,6 +66,12 @@ public class MainController extends AbstractController {
 			cfgParse.parseXml(configPath, this._mainInfo.getConfig());
 		} catch (Exception e) {
 			e.printStackTrace();
+		}
+		
+		/* Store all Config data objects in the DataStore */
+		List<Data> dataList = this._mainInfo.getConfig().getDataList();
+		for (Data d : dataList) {
+			this._mainInfo.getDataStore().add(d.getId(), d.getType(), d.getValue());
 		}
 		
 		/* Set the context object */
@@ -171,6 +184,12 @@ public class MainController extends AbstractController {
 			}
 			long stopTime = System.currentTimeMillis();
 			OLog.info("Thread woke up " + (stopTime-startTime) + "ms later." );
+		} else if (shortCmdStr.equals("processData")) {
+			processWaterQualityData(_waterQualityData);
+			OLog.info("Processed Water Quality Data");
+		} else if (shortCmdStr.equals("clearData")) {
+			clearWaterQualityData();
+			OLog.info("Cleared Water Quality Data");
 		} else if (shortCmdStr.equals("receiveData")) {
 			for (MainControllerEventHandler e : _eventHandlers) {
 				e.onDataAvailable();
@@ -296,6 +315,34 @@ public class MainController extends AbstractController {
 		return new WaterQualityData(_waterQualityData);
 	}
 	
+	public long getSleepInterval() {
+		DataStore ds = this._mainInfo.getDataStore();
+		if (ds == null) {
+			OLog.warn("DataStore is null!");
+			return DEFAULT_SLEEP_INTERVAL;
+		}
+		
+		DataStoreObject d = 
+				(DataStoreObject) ds.retrieve("custom_sleep_interval");
+		if ( d == null ) {
+			OLog.warn("DataStoreObject is null!");
+			return DEFAULT_SLEEP_INTERVAL;
+		}
+		
+		if ( d.getType().equals("long") == false ) {
+			OLog.warn("DataStoreObject type is incorrect: " + d.getType());
+			return DEFAULT_SLEEP_INTERVAL;
+		}
+		
+		Long interval = null;
+		try {
+			interval = Long.decode((String)(d.getObject()));
+		} catch (NumberFormatException e) {
+			interval = DEFAULT_SLEEP_INTERVAL;
+		}
+		
+		return interval;
+	}
 
 	/*********************/
 	/** Private Methods **/
@@ -330,8 +377,14 @@ public class MainController extends AbstractController {
 		/* Initialize data buffers */
 		_chemPresenceData = new ChemicalPresenceData(1);
 		_waterQualityData = new WaterQualityData(1);
+		_siteDeviceData = new SiteDeviceData("TEST_DEVICE_54", "test");
+		
 		this._mainInfo.getDataStore().add("hg_as_detection_data", "ChemicalPresenceData", _chemPresenceData);
 		this._mainInfo.getDataStore().add("h2o_quality_data", "WaterQualityData", _waterQualityData);
+		this._mainInfo.getDataStore().add("sendable_data_site", "SiteDeviceData", _siteDeviceData);
+		
+		this._mainInfo.getDataStore().add("live_data_url", "LiveDataUrl", "http://miningsensors.info/apidev");
+		
 		
 		/* Initialize all sub-controllers here */
 		_bluetoothController = BluetoothController.getInstance(this._mainInfo);
@@ -439,19 +492,37 @@ public class MainController extends AbstractController {
 		OLog.info("NetworkController started successfully");
 		return retStatus;
 	}
-
-    private void notifyRunTaskFinished() {
-        if ( _eventHandlers == null ) {
-            return;
-        }
-
-        /* Notify all event handlers */
-        for ( MainControllerEventHandler ev : _eventHandlers ) {
-            ev.onRunTaskFinished();
-        }
-
-        return;
-    }
+	
+	private void processWaterQualityData(WaterQualityData d) {
+		
+		_siteDeviceData.addReportData(new SiteDeviceReportData("pH", "", (float)(d.pH), "OK"));
+		_siteDeviceData.addReportData(new SiteDeviceReportData("DO2", "mg/L", (float)(d.dissolved_oxygen), "OK"));
+		_siteDeviceData.addReportData(new SiteDeviceReportData("Conductivity", "uS/cm", (float)(d.conductivity), "OK"));
+		_siteDeviceData.addReportData(new SiteDeviceReportData("Temperature", "deg C", (float)(d.temperature), "OK"));
+		_siteDeviceData.addReportData(new SiteDeviceReportData("Turbidity", "NTU", (float)(d.turbidity), "OK"));
+		
+		return;
+	}
+	
+	private void clearWaterQualityData() {
+		
+		_siteDeviceData.clearReportData();
+		
+		return;
+	}
+	
+	private void notifyRunTaskFinished() {
+		if (_eventHandlers == null) {
+			return;
+		}
+		
+		for (MainControllerEventHandler ev : _eventHandlers) {
+			ev.onFinish();
+		}
+		
+		OLog.info("Run Task finished");
+		return;
+	}
 	
 	/*******************/
 	/** Inner Classes **/
@@ -464,142 +535,69 @@ public class MainController extends AbstractController {
 			
 			List<Task> taskList = _mainInfo.getConfig().getProcedure("default").getTaskList();
 			
-			for (int i = 0; i < 100; i++) {
+			for (Task t : taskList) {
 				if (getState() == ControllerState.UNKNOWN) {
 					OLog.info("Run task terminated.");
 					break;
 				}
-				for (Task t : taskList) {
-					if (getState() == ControllerState.UNKNOWN) {
-						OLog.info("Run task terminated.");
-						break;
-					}
-					
-					OLog.info("Executing task: " + t.toString());
-					/* Break apart the taskId */
-					String taskId = t.getId();
-					
-					OLog.info("TASK ID: " + t.getId());
-					
-					if (t.getId().startsWith("system.main")) {
-						performCommand(t.getId(), t.getParams());
-						continue;
-					}
-					
-					String taskIdArr[] = taskId.split("\\.");
-					if (taskIdArr.length < 2) {
-						OLog.info("Invalid length: " + taskIdArr.length);
-						break;
-					}
-					
-					if (taskIdArr[0] == null) {
-						break;
-					}
-					
-					if (taskIdArr[1] == null) {
-						break;
-					}
-					
-					AbstractController controller = _mainInfo.getSubController(taskIdArr[1], taskIdArr[0]);
-					if (controller == null) {
-						break;
-					}
-					
-					ControllerStatus status = controller.performCommand(t.getId(), t.getParams());
-					if (status.getLastCmdStatus() != Status.OK) {
-						OLog.err(status.toString());
-						break;
-					}
-					OLog.info("Task Finished: " + t.toString());
+				
+				OLog.info("Loaded task: " + t.toString() + 
+						"( id: " + t.getId() +" )");
+				
+				/* Check first if the task is valid for execution */
+				if (checkTaskValidity(t) == false) {
+					OLog.err("Invalid task: " + t.toString());
+					break;
 				}
+				
+				/* If this is a system task, then execute it using 
+				 *   the MainController's own performCommand() method */
+				if (t.getId().startsWith("system.main")) {
+					performCommand(t.getId(), t.getParams());
+					continue;
+				}
+				
+				/* Get the sub controller for this task */
+				AbstractController controller = _mainInfo.getSubController(t.getId());
+				if (controller == null) {
+					OLog.err("Invalid task: " + t.toString());
+					break;
+				}
+				
+				/* Perform the command using the appropriate subcontroller */
+				ControllerStatus status = controller.performCommand(t.getId(), t.getParams());
+				if (status.getLastCmdStatus() != Status.OK) {
+					OLog.err("Task failed: " + t.toString());
+					OLog.err(status.toString());
+					break;
+				}
+				OLog.info("Task Finished: " + t.toString());
 			}
-//			
-//			_mainInfo.getConfig().getProcedure("default");
-//			
-//			for (int i = 0; i < 20; i++) {
-//				/* Start the network controller */
-//				if (startNetworkController() != Status.OK) {
-//					OLog.err("Failed to start network controller");
-//				}
-//
-//				/* Start the Bluetooh controller */
-//				if (startBluetoothController() != Status.OK) {
-//					OLog.err("Failed to start Bluetooth controller");
-//					break;
-//				}
-//
-//				/* Start the sensor array controller */
-//				if (_sensorArrayController.initialize() == Status.FAILED) {
-//					OLog.err("Failed to start sensor controller");
-//					break;
-//				}
-//
-//				/* Start the camera controller */
-////				if (_cameraController.initialize() == Status.FAILED) {
-////					OLog.err("Failed to start the camera controller"); 
-////					break;
-////				}
-//
-//				try {
-//					Thread.sleep(1750);
-//				} catch (InterruptedException e) {
-//					/* This allows the running thread to be interrupted whenever
-//					 * MainController.stop() is invoked by the UI */
-//					OLog.info("Controller Run Thread Interrupted");
-//				}
-//				
-//				/* Pull data from water quality sensors */
-//				OLog.info("Reading Sensor Data...");
-//				if ( _sensorArrayController.readAllSensors() == Status.OK ) {
-//					_waterQualityDataAvailable = true;
-//					_eventHandler.onDataAvailable();
-//				}
-//
-//				/* Upload sensor data to server */
-//				if ( _waterQualityDataAvailable == true ) {
-//					if ( _networkController.getState() == ControllerState.READY ) {
-//						_networkController.send(DEFAULT_DATA_SERVER_URL,
-//								new HttpEncWaterQualityData(_waterQualityData));	
-//					}
-//					_waterQualityDataAvailable = false;
-//				}
-//
-//				/* Pull data from the phone's camera */
-////				OLog.info("Capturing Chem Strip Image...");
-////				if ( _cameraController.captureImage() == Status.OK ) {
-////					_chemPresenceDataAvailable = true;
-////				}
-////
-////				try {
-////					Thread.sleep(1750);
-////				} catch (InterruptedException e) {
-////					/* This allows the running thread to be interrupted whenever
-////					 * MainController.stop() is invoked by the UI */
-////					OLog.info("Controller Run Thread Interrupted");
-////				}
-////				
-////				/* Upload the chemical presence data to server */
-////				if ( _chemPresenceDataAvailable == true ) {
-////					if ( _networkController.getState() == ControllerState.READY ) {
-////						_networkController.send( DEFAULT_IMAGE_SERVER_URL,
-////								new HttpEncChemicalPresenceData(_chemPresenceData) );	
-////					}
-////					_chemPresenceDataAvailable = false;
-////				}
-//				
-//				try {
-//					Thread.sleep(7500);
-//				} catch (InterruptedException e) {
-//					/* This allows the running thread to be interrupted whenever
-//					 * MainController.stop() is invoked by the UI */
-//					OLog.info("Controller Run Thread Interrupted");
-//					break;
-//				}
-//			}
-//			
-		    /* Notify all event handlers that the run task is finished */
-            notifyRunTaskFinished();
-			OLog.info("Run Task finished");
+			
+			/* Notify all event handlers that the MainController has finished
+			 *   executing all tasks */
+			notifyRunTaskFinished();
+			
+			return;
+		}
+		
+		private boolean checkTaskValidity(Task t) {
+			if (t == null) {
+				return false;
+			}
+			
+			/* Break apart the taskId */
+			String taskIdArr[] = t.getId().split("\\.");
+			if (taskIdArr.length < 2) {
+				OLog.info("Invalid length: " + taskIdArr.length);
+				return false;
+			}
+			
+			if ((taskIdArr[0] == null) || (taskIdArr[1] == null)) {
+				return false;
+			}
+			
+			return true;
 		}
 	}
 }

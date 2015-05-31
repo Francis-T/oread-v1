@@ -2,7 +2,7 @@ package net.oukranos.oreadv1.interfaces;
 
 public interface MainControllerEventHandler {
 	public void onDataAvailable();
-    public void onRunTaskFinished();
+	public void onFinish();
 //	public void onBluetoothStarted();
 //	public void onBluetoothStopped();
 //	public void onNetworkConnected();
