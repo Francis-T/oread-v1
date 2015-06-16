@@ -111,11 +111,40 @@ public class ConfigXmlParser {
 			processDataTag(xpp, xmpData, config);
 		} else if (tagName.equals("task") == true) {
 			processTaskTag(xpp, xmpData, config);
+		} else if (tagName.equals("configuration") == true) {
+			processConfigTag(xpp, xmpData, config);
 		}
 		
 		return;
 	}
 
+	private void processConfigTag(XmlPullParser xpp, XmlParsingMetaData xmpData, 
+			Configuration config) {
+		String configId = "";
+		String configVersion = "";
+		String configDate = "";
+		
+		for (int attrIdx = 0; attrIdx < xpp.getAttributeCount(); attrIdx++) {
+			String attrName = xpp.getAttributeName(attrIdx); 
+            String attrValue = xpp.getAttributeValue(attrIdx);
+
+			if (attrName.equals("id") == true) {
+				configId = attrValue;
+			} else if (attrName.equals("version") == true) {
+				configVersion = attrValue;
+			} else if (attrName.equals("creation-date") == true) {
+				configDate = attrValue;
+			}
+		}
+		
+		/* Set the config file parameters */
+		config.setId(configId);
+		config.setVersion(configVersion);
+		config.setCreationDate(configDate);
+		
+		return;
+	}
+	
 	private void processModuleTag(XmlPullParser xpp, XmlParsingMetaData xmpData, 
 			Configuration config) {
 		String moduleId = "";

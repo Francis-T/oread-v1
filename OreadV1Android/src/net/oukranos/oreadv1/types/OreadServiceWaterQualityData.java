@@ -46,6 +46,7 @@ public class OreadServiceWaterQualityData extends WaterQualityData implements Pa
 		out.writeDouble(temperature);
 		out.writeDouble(tds);
 		out.writeDouble(salinity);
+		out.writeDouble(turbidity);
 	}
 	
 

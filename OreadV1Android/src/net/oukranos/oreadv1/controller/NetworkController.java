@@ -9,7 +9,9 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.impl.client.DefaultHttpClient;
 
 import android.content.Context;
@@ -23,6 +25,7 @@ import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.DataStore;
 import net.oukranos.oreadv1.types.DataStoreObject;
 import net.oukranos.oreadv1.types.MainControllerInfo;
+import net.oukranos.oreadv1.types.SendableData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.util.OLog;
 
@@ -279,7 +282,7 @@ public class NetworkController extends AbstractController {
 		}
 
 		/* Add incoming data to the send task queue */
-		_sendTaskQueue.add(new SendableData(url, data));
+		_sendTaskQueue.add(new SendableData(url, "POST", data));
 		_queueLock.unlock();
 
 		/* Notify the send thread */
@@ -346,11 +349,16 @@ public class NetworkController extends AbstractController {
 			return Status.FAILED;
 		}
 
-		HttpPost httpPost = new HttpPost(url);
-		httpPost.setEntity(sendableData.getData().encodeDataToHttpEntity());
+		HttpUriRequest httpRequest = null;
+		if (sendableData.getMethod().equals("GET")) {
+			httpRequest = new HttpGet(url);
+		} else {
+			httpRequest = new HttpPost(url);
+			((HttpPost)httpRequest).setEntity(sendableData.getData().encodeDataToHttpEntity());
+		}
 		HttpResponse httpResp = null;
 		try {
-			httpResp = _httpClient.execute(httpPost);
+			httpResp = _httpClient.execute(httpRequest);
 		} catch (ClientProtocolException e) {
 			OLog.warn("Empty HttpResponse");
 		} catch (IOException e) {
@@ -371,11 +379,6 @@ public class NetworkController extends AbstractController {
 		}
 
 		OLog.info("Sent data to " + url);
-		try {
-			OLog.info("Contents: " + httpPost.getEntity().toString());
-		} catch (Exception e) {
-			;
-		}
 
 		return Status.OK;
 	}
@@ -447,24 +450,6 @@ public class NetworkController extends AbstractController {
 
 			OLog.err("Network Controller run task finished");
 			return;
-		}
-	}
-
-	private class SendableData {
-		private String url = "";
-		private HttpEncodableData data = null;
-
-		public SendableData(String url, HttpEncodableData data) {
-			this.url = url;
-			this.data = data;
-		}
-
-		public String getUrl() {
-			return this.url;
-		}
-
-		public HttpEncodableData getData() {
-			return this.data;
 		}
 	}
 }

@@ -7,6 +7,8 @@ import net.oukranos.oreadv1.util.OLog;
 
 public class Configuration {
     private String _id = "";
+    private String _version = "";
+    private String _creationDate = "";
     private List<Module> _moduleList = null;
     private List<Procedure> _procedureList = null;
     private List<Data> _dataList = null;
@@ -19,6 +21,7 @@ public class Configuration {
         return;
     }
     
+    /** Public Methods **/
     public String getId() {
         return (this._id);
     }
@@ -36,7 +39,36 @@ public class Configuration {
 
         return Status.OK;
     }
-
+    
+    public String getVersion() {
+    	return (this._version);
+    }
+    
+    public Status setVersion(String version) {
+    	if (version == null) {
+    		return Status.FAILED;
+    	}
+    	
+    	this._version = version;
+    	
+    	return Status.OK;
+    }
+    
+    public String getCreationDate() {
+    	return (this._creationDate);
+    }
+    
+    public Status setCreationDate(String date) {
+    	if (date == null) {
+    		return Status.FAILED;
+    	}
+    	
+    	this._creationDate = date;
+    	
+    	return Status.OK;
+    }
+    
+    /** Configuration Sub-object Manipulators **/
     public Status addModule(String id, String type) {
     	if ((id == null) || (type == null)) {
     		return Status.FAILED;

@@ -4,23 +4,36 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.TimeZone;
 
+import org.apache.http.HttpEntity;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.entity.StringEntity;
+
+import net.oukranos.oreadv1.android.AndroidConnectivityBridge;
+import net.oukranos.oreadv1.android.AndroidInternetBridge;
 import net.oukranos.oreadv1.controller.MainController;
 import net.oukranos.oreadv1.interfaces.CameraControlIntf;
 import net.oukranos.oreadv1.interfaces.CapturedImageMetaData;
+import net.oukranos.oreadv1.interfaces.HttpEncodableData;
 import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
 import net.oukranos.oreadv1.interfaces.OreadServiceApi;
 import net.oukranos.oreadv1.interfaces.OreadServiceListener;
+import net.oukranos.oreadv1.manager.ConfigManager;
 import net.oukranos.oreadv1.types.CameraTaskType;
+import net.oukranos.oreadv1.types.Configuration;
 import net.oukranos.oreadv1.types.ControllerState;
+import net.oukranos.oreadv1.types.Data;
 import net.oukranos.oreadv1.types.OreadServiceControllerStatus;
 import net.oukranos.oreadv1.types.OreadServiceWaterQualityData;
+import net.oukranos.oreadv1.types.SendableData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
+import net.oukranos.oreadv1.util.ConfigXmlParser;
 import net.oukranos.oreadv1.util.OLog;
 
 import android.app.Service;
@@ -36,12 +49,17 @@ import android.util.Log;
 import android.view.WindowManager;
 
 public class OreadService extends Service implements MainControllerEventHandler, CameraControlIntf  {
-	private static final int DEFAULT_PICTURE_WIDTH  = 640;
-	private static final int DEFAULT_PICTURE_HEIGHT = 480;
-	private final String root_sd = Environment.getExternalStorageDirectory().toString();
-	private final String savePath = root_sd + "/OreadPrototype";
+	private static final int 	DEFAULT_PICTURE_WIDTH  = 640;
+	private static final int 	DEFAULT_PICTURE_HEIGHT = 480;
+	private static final String DEFAULT_DEVICE_CONFIG_URL_BASE = "http://miningsensors.info/deviceconf";
+	
+	private final String _root_sd = Environment.getExternalStorageDirectory().toString();
+	private final String _savePath = _root_sd + "/OreadPrototype";
+	private final String _defaultConfigFile = (_savePath + "/oread_config.xml");
 	
 	private MainController _mainController = null;
+	private AndroidInternetBridge _networkBridge = null;
+	private AndroidConnectivityBridge _connBridge = null;
 	
 	private PullDataTask _pullDataTask = null;
 	private CameraControlTask _cameraControlTask = null;
@@ -94,6 +112,12 @@ public class OreadService extends Service implements MainControllerEventHandler,
 			OLog.info("OreadService onStartCommand() triggers service activation");
 			activateService();
 			_state = ServiceState.ACTIVE;
+		}
+
+		/* Update the config file if a new version exists on the remote server */
+		ConfigManager cfgMan = ConfigManager.getInstance();
+		if (cfgMan.runConfigFileUpdate(this) != Status.OK) {
+			OLog.info("Config File Update Failed");
 		}
 		
 		OLog.info("OreadService onStartCommand() finished");
@@ -190,7 +214,7 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	/**********************************************************************/
 	private Status initializeMainController() {
 		if (_mainController == null) {
-			_mainController = MainController.getInstance(this, savePath + "/oread_config.xml");
+			_mainController = MainController.getInstance(this, this._defaultConfigFile);
 			_mainController.registerEventHandler(this);
 			_mainController.initialize();
 		}
@@ -363,7 +387,7 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		final String LOG_ID_STRING = "[savePictureToFile]";
 		
 		/* Save the marker trace to a file */
-		File saveDir = new File(savePath);
+		File saveDir = new File(_savePath);
 		
 		if (!saveDir.exists())
 		{
@@ -487,6 +511,48 @@ public class OreadService extends Service implements MainControllerEventHandler,
 			return;
 		}
 		
+	}
+	
+	private void saveConfigFileData(byte[] data) {
+		final String LOG_ID_STRING = "[savePictureToFile]";
+		
+		/* Save the marker trace to a file */
+		File saveDir = new File(_savePath);
+		
+		if (!saveDir.exists())
+		{
+			saveDir.mkdirs();
+		}
+		
+		File saveFile = null;
+
+		saveFile = new File(saveDir, "oread_config.xml");
+		
+		try {
+			if (!saveFile.createNewFile())
+			{
+				Log.e(LOG_ID_STRING, "Error: Failed to create save file!");
+				return;
+			}
+		} catch (IOException e1) {
+			e1.printStackTrace();
+		}
+
+		try {
+			FileOutputStream saveFileStream = new FileOutputStream(saveFile);
+			
+			saveFileStream.write(data);
+			
+			saveFileStream.close();
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		OLog.info("Saved! (see FilePath:" + saveFile.getParent() + 
+							 " FileName:" + saveFile.getName() +" )");
+		return;
 	}
 
 	/**********************************************************************/

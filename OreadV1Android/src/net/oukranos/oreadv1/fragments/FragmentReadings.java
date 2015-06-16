@@ -335,21 +335,21 @@ public class FragmentReadings extends Fragment {
   				_condDataList.remove(0);
   			}
   			
-  			_tempDataList.add((float) data.temperature);
-  			if (_tempDataList.size() > MAX_LIST_LEN) {
-  				_tempDataList.remove(0);
-  			}
-  			
   			_turbDataList.add((float) data.turbidity);
   			if (_turbDataList.size() > MAX_LIST_LEN) {
   				_turbDataList.remove(0);
   			}
   			
+  			_tempDataList.add((float) data.temperature);
+  			if (_tempDataList.size() > MAX_LIST_LEN) {
+  				_tempDataList.remove(0);
+  			}
+  			
   			_varianceList.set(0, (float) calculateVariance(_phDataList));
   			_varianceList.set(1, (float) calculateVariance(_do2DataList));
   			_varianceList.set(2, (float) calculateVariance(_condDataList));
-  			_varianceList.set(3, (float) calculateVariance(_tempDataList));
-  			_varianceList.set(4, (float) calculateVariance(_turbDataList));
+  			_varianceList.set(3, (float) calculateVariance(_turbDataList));
+  			_varianceList.set(4, (float) calculateVariance(_tempDataList));
   			
   			return;
   		}
@@ -490,12 +490,6 @@ public class FragmentReadings extends Fragment {
 					   " COND: " + Float.toString((float)data.conductivity) +
 					   " TURB: " + Float.toString((float)data.turbidity) +
 					   " TEMP: " + Float.toString((float)data.temperature) );
-			
-//			TextView valField = _fieldMap.get("pH").getValueField();
-//			if (valField != null) {
-//				valField.setText(text)
-//			}
-			
 		}
     	
     }

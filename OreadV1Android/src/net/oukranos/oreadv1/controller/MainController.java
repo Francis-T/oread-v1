@@ -15,6 +15,7 @@ import net.oukranos.oreadv1.types.DataStore;
 import net.oukranos.oreadv1.types.DataStoreObject;
 import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.SiteDeviceData;
+import net.oukranos.oreadv1.types.SiteDeviceImage;
 import net.oukranos.oreadv1.types.SiteDeviceReportData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.Task;
@@ -41,6 +42,7 @@ public class MainController extends AbstractController {
 	@SuppressWarnings("unused")
 	private boolean _chemPresenceDataAvailable = false;
 	private SiteDeviceData _siteDeviceData = null;
+	private SiteDeviceImage _siteDeviceImage = null;
 	
 	private BluetoothController _bluetoothController = null;
 	private SensorArrayController _sensorArrayController = null;
@@ -53,6 +55,23 @@ public class MainController extends AbstractController {
 	/*************************/
 	/** Initializer Methods **/
 	/*************************/
+	private MainController(Context parent) {
+		/* Set the main controller's base parameters */
+		this.setName("main");
+		this.setType("system");
+		this.setState(ControllerState.UNKNOWN);
+		
+		/* Set the main controller info with a dummy configuration */
+		this._mainInfo = new MainControllerInfo(new Configuration("dummy"), new DataStore());
+		
+		/* Set the context object */
+		this._mainInfo.setContext(parent);
+		
+		/* Initialize list of event handlers */
+		this._eventHandlers = new ArrayList<MainControllerEventHandler>();
+		
+		return;
+	}
 	private MainController(Context parent, String configPath) {
 		/* Set the main controller's base parameters */
 		this.setName("main");
@@ -83,9 +102,49 @@ public class MainController extends AbstractController {
 		return;
 	}
 	
+	private MainController(Context parent, Configuration configuration) {
+		/* Set the main controller's base parameters */
+		this.setName("main");
+		this.setType("system");
+		this.setState(ControllerState.UNKNOWN);
+		
+		/* Set the main controller info */
+		this._mainInfo = new MainControllerInfo(configuration, new DataStore());
+		
+		/* Store all Config data objects in the DataStore */
+		List<Data> dataList = this._mainInfo.getConfig().getDataList();
+		for (Data d : dataList) {
+			this._mainInfo.getDataStore().add(d.getId(), d.getType(), d.getValue());
+		}
+		
+		/* Set the context object */
+		this._mainInfo.setContext(parent);
+		
+		/* Initialize list of event handlers */
+		this._eventHandlers = new ArrayList<MainControllerEventHandler>();
+		
+		return;
+	}
+	
+	public static MainController getInstance(Context parent) {
+		if (_mainControllerInstance == null) {
+			_mainControllerInstance = new MainController(parent);
+		}
+		
+		return _mainControllerInstance;
+	}
+	
 	public static MainController getInstance(Context parent, String configPath) {
 		if (_mainControllerInstance == null) {
 			_mainControllerInstance = new MainController(parent, configPath);
+		}
+		
+		return _mainControllerInstance;
+	}
+	
+	public static MainController getInstance(Context parent, Configuration configuration) {
+		if (_mainControllerInstance == null) {
+			_mainControllerInstance = new MainController(parent, configuration);
 		}
 		
 		return _mainControllerInstance;
@@ -184,6 +243,9 @@ public class MainController extends AbstractController {
 			}
 			long stopTime = System.currentTimeMillis();
 			OLog.info("Thread woke up " + (stopTime-startTime) + "ms later." );
+		} else if (shortCmdStr.equals("processImage")) {
+			processImageData(_chemPresenceData);
+			OLog.info("Processed Image Data");
 		} else if (shortCmdStr.equals("processData")) {
 			processWaterQualityData(_waterQualityData);
 			OLog.info("Processed Water Quality Data");
@@ -377,11 +439,13 @@ public class MainController extends AbstractController {
 		/* Initialize data buffers */
 		_chemPresenceData = new ChemicalPresenceData(1);
 		_waterQualityData = new WaterQualityData(1);
-		_siteDeviceData = new SiteDeviceData("TEST_DEVICE_54", "test");
+		_siteDeviceData = new SiteDeviceData("DV862808028030255", "test");
+		_siteDeviceImage = new SiteDeviceImage("DV862808028030255", "test", "", "");
 		
 		this._mainInfo.getDataStore().add("hg_as_detection_data", "ChemicalPresenceData", _chemPresenceData);
 		this._mainInfo.getDataStore().add("h2o_quality_data", "WaterQualityData", _waterQualityData);
 		this._mainInfo.getDataStore().add("sendable_data_site", "SiteDeviceData", _siteDeviceData);
+		this._mainInfo.getDataStore().add("sendable_image_site", "SiteDeviceImage", _siteDeviceImage);
 		
 		this._mainInfo.getDataStore().add("live_data_url", "LiveDataUrl", "http://miningsensors.info/apidev");
 		
@@ -430,6 +494,9 @@ public class MainController extends AbstractController {
 		_chemPresenceData = null;
 		this._mainInfo.getDataStore().remove("h2o_quality_data");
 		this._mainInfo.getDataStore().remove("hg_as_detection_data");
+		this._mainInfo.getDataStore().remove("sendable_data_site");
+		this._mainInfo.getDataStore().remove("sendable_image_site");
+		this._mainInfo.getDataStore().remove("live_data_url");
 		
 		return Status.OK;
 	}
@@ -491,6 +558,13 @@ public class MainController extends AbstractController {
 		}
 		OLog.info("NetworkController started successfully");
 		return retStatus;
+	}
+	
+	private void processImageData(ChemicalPresenceData d) {
+		_siteDeviceImage.setCaptureFile(d.getCaptureFileName(), d.getCaptureFilePath());
+		_siteDeviceImage.addReportData(new SiteDeviceReportData("photo", "", 0f, ""));
+		
+		return;
 	}
 	
 	private void processWaterQualityData(WaterQualityData d) {

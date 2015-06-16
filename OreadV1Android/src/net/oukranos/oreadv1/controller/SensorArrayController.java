@@ -665,16 +665,9 @@ public class SensorArrayController extends AbstractController implements
 				OLog.err("Parsing failed " + this.getName());
 				return Status.FAILED;
 			}
-			
-			final String tempSplit[] = dataStrSplit[1].split(",");
-			final int tempSplitNum = tempSplit.length;
-			if (tempSplitNum != 2) {
-				OLog.err("Parsing failed " + this.getName());
-				return Status.FAILED;
-			}
 
 			try {
-				container.temperature = Double.parseDouble(tempSplit[0]);
+				container.temperature = Double.parseDouble(dataStrSplit[1]);
 			} catch (NumberFormatException e) {
 				container.temperature = -1.0;
 			}

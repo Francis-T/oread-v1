@@ -63,7 +63,7 @@ public class BluetoothController extends AbstractController implements
 	@Override
 	public Status initialize() {
 		if (_btBridge == null) {
-			_btBridge = new AndroidBluetoothBridge();
+			_btBridge = new AndroidBluetoothBridge(); // TODO Should not be defined here
 		}
 
 		/* Initialize the Bluetooth Bridge */
