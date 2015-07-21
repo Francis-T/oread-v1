@@ -3,9 +3,12 @@ package net.oukranos.oreadv1.interfaces;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public abstract class AbstractHardwareController {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	protected String _name = "controller";
 	protected String _type = "unknown";
 	private ControllerState _state = ControllerState.UNKNOWN;

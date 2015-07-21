@@ -9,12 +9,16 @@ import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.DataStore;
 import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.Sensor;
+import net.oukranos.oreadv1.types.Sensor.ReceiveStatus;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class SensorArrayController extends AbstractController implements
 		SensorEventHandler {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private static SensorArrayController _sensorArrayController = null;
 	private MainControllerInfo _mainInfo = null;
 	
@@ -30,9 +34,6 @@ public class SensorArrayController extends AbstractController implements
 	private TurbiditySensor _turbiditySensor = null;  
 
 	private byte[] _tempDataBuffer = new byte[512];
-//	private int _tempDataOffset = 0;
-//
-//	private boolean _isDataAvailable = false;
 
 	/*************************/
 	/** Initializer Methods **/
@@ -70,7 +71,7 @@ public class SensorArrayController extends AbstractController implements
 	/** AbstractController Methods **/
 	/********************************/
 	@Override
-	public Status initialize() {
+	public Status initialize(Object initializer) {
 		/* Retrieve the water quality data buffer */
 		/* TODO Not sure if this is the best place to put this */
 		DataStore dataStore = _mainInfo.getDataStore();
@@ -220,6 +221,8 @@ public class SensorArrayController extends AbstractController implements
 		return Status.OK;
 	}
 	
+	/* XXX This command may safely be deprecated as it is not expected to
+	 *		used anymore now that individual commands are available */
 	public Status readAllSensors() {
 		if (this.getState() != ControllerState.READY) {
 			return Status.FAILED;
@@ -369,7 +372,7 @@ public class SensorArrayController extends AbstractController implements
 
 		/* Wait until the sensor's response is received */
 		try {
-			Thread.sleep(2000);
+			Thread.sleep(sensor.getTimeout());
 		} catch (InterruptedException e) {
 			OLog.info("Interrupted");
 		}
@@ -407,7 +410,7 @@ public class SensorArrayController extends AbstractController implements
 
 		/* Wait until the sensor's response is received */
 		try {
-			Thread.sleep(2000);
+			Thread.sleep(sensor.getTimeout());
 		} catch (InterruptedException e) {
 			OLog.info("Interrupted");
 		}
@@ -429,6 +432,17 @@ public class SensorArrayController extends AbstractController implements
 		public PHSensor(BluetoothController bluetooth) {
 			super(bluetooth);
 			this.setName("pH Sensor");
+			
+			/* Configure the response matchers */ // TODO Should be abstracted
+			R_RESP_PREF  = "pH: ";
+			R_DATA_PART	 = "[-]*[0-9]+\\.*[0-9]*";
+			R_RESP_DATA  = R_DATA_PART;
+			R_RESP_OK  	 = "\\*OK";
+			R_RESP_ERR 	 = "\\*ERR";
+
+			//this.setTimeout(2000); //TODO
+			
+			return;
 		}
 
 		@Override
@@ -447,35 +461,28 @@ public class SensorArrayController extends AbstractController implements
 		}
 
 		@Override
-		public Status getParsedData(WaterQualityData container) {
+		protected void handleParsedData(WaterQualityData container, int count, String match) {
 			if (container == null) {
-				OLog.err("Data container is null for " + this.getName());
-				return Status.FAILED;
+				return;
 			}
-
-			final byte[] data = this.getReceivedData();
-			if (data == null) {
-				OLog.err("Received data buffer is null for " + this.getName());
-				return Status.FAILED;
+			
+			if (match == null) {
+				return;
 			}
-			final String dataStr = new String(data).trim();
-			final String dataStrSplit[] = dataStr.split(" ");
-			final int splitNum = dataStrSplit.length;
-
-			if (splitNum != 2) {
-				OLog.err("Parsing failed " + this.getName());
-				return Status.FAILED;
+			
+			if (count != 1) {
+				return;
 			}
 
 			try {
-				container.pH = Double.parseDouble(dataStrSplit[1]);
+				container.pH = Double.parseDouble(match);
 			} catch (NumberFormatException e) {
+				OLog.err("Failed to parse value: " + match);
 				container.pH = -1.0;
 			}
-
-			return Status.OK;
+			
+			return;
 		}
-
 	}
 
 	private class DissolvedOxygenSensor extends Sensor {
@@ -486,6 +493,17 @@ public class SensorArrayController extends AbstractController implements
 		public DissolvedOxygenSensor(BluetoothController bluetooth) {
 			super(bluetooth);
 			this.setName("Dissolved Oxygen Sensor");
+
+			/* Configure the response matchers */ // TODO Should be abstracted
+			R_RESP_PREF  = "DO: ";
+			R_DATA_PART	 = "[-]*[0-9]+\\.*[0-9]*";
+			R_RESP_DATA  = R_DATA_PART;
+			R_RESP_OK  	 = "\\*OK";
+			R_RESP_ERR 	 = "\\*ERR";
+
+			//this.setTimeout(2000); //TODO
+			
+			return;
 		}
 
 		@Override
@@ -513,45 +531,51 @@ public class SensorArrayController extends AbstractController implements
 		}
 
 		@Override
-		public Status getParsedData(WaterQualityData container) {
+		protected void handleParsedData(WaterQualityData container, int count, String match) {
 			if (container == null) {
-				OLog.err("Data container is null for " + this.getName());
-				return Status.FAILED;
+				return;
 			}
-
-			final byte[] data = this.getReceivedData();
-			if (data == null) {
-				OLog.err("Received data buffer is null for " + this.getName());
-				return Status.FAILED;
+			
+			if (match == null) {
+				return;
 			}
-			final String dataStr = new String(data).trim();
-			final String dataStrSplit[] = dataStr.split(" ");
-			final int splitNum = dataStrSplit.length;
-
-			if (splitNum != 2) {
-				OLog.err("Parsing failed " + this.getName());
-				return Status.FAILED;
+			
+			if (count != 1) {
+				return;
 			}
-
+			
 			try {
-				container.dissolved_oxygen = Double
-						.parseDouble(dataStrSplit[1]);
+				container.dissolved_oxygen 
+					= Double.parseDouble(match);
 			} catch (NumberFormatException e) {
+				OLog.err("Failed to parse value: " + match);
 				container.dissolved_oxygen = -1.0;
 			}
-
-			return Status.OK;
+			
+			return;
 		}
 	}
 
 	private class ConductivitySensor extends Sensor {
 		private static final String READ_CMD_STR = "READ 3";
 		private static final String INFO_CMD_STR = "FORCE 3 I";
-		private static final String CALIBRATE_CMD_STR = "FORCE 3 CAl,";
+		private static final String CALIBRATE_CMD_STR = "FORCE 3 Cal,";
+
 
 		public ConductivitySensor(BluetoothController bluetooth) {
 			super(bluetooth);
 			this.setName("Conductivity Sensor");
+
+			/* Configure the response matchers */ // TODO Should be abstracted
+			R_RESP_PREF  = "EC: ";
+			R_DATA_PART	 = "[-]*[0-9]+\\.*[0-9]*";
+			R_RESP_DATA  = R_DATA_PART + "," + R_DATA_PART + "," + R_DATA_PART;
+			R_RESP_OK  	 = "\\*OK";
+			R_RESP_ERR 	 = "\\*ERR";
+
+			//this.setTimeout(2000); //TODO
+			
+			return;
 		}
 
 		@Override
@@ -570,51 +594,47 @@ public class SensorArrayController extends AbstractController implements
 		}
 
 		@Override
-		public Status getParsedData(WaterQualityData container) {
+		protected void handleParsedData(WaterQualityData container, int count, String match) {
 			if (container == null) {
-				OLog.err("Data container is null for " + this.getName());
-				return Status.FAILED;
+				return;
 			}
-
-			final byte[] data = this.getReceivedData();
-			if (data == null) {
-				OLog.err("Received data buffer is null for " + this.getName());
-				return Status.FAILED;
+			
+			if (match == null) {
+				return;
 			}
-			final String dataStr = new String(data).trim();
-			final String dataStrSplit[] = dataStr.split(" ");
-			final int splitNum = dataStrSplit.length;
-			if ((splitNum <= 0) || (splitNum > 2)) {
-				OLog.err("Parsing failed " + this.getName());
-				return Status.FAILED;
+			
+			switch (count) {
+				case 1:
+					try {
+						container.conductivity 
+							= Double.parseDouble(match);
+					} catch (NumberFormatException e) {
+						OLog.err("Failed to parse value: " + match);
+						container.conductivity = -1.0;
+					}
+					break;
+				case 2:
+					try {
+						container.tds 
+							= Double.parseDouble(match);
+					} catch (NumberFormatException e) {
+						OLog.err("Failed to parse value: " + match);
+						container.tds = -1.0;
+					}
+					break;
+				case 3:
+					try {
+						container.salinity 
+							= Double.parseDouble(match);
+					} catch (NumberFormatException e) {
+						OLog.err("Failed to parse value: " + match);
+						container.tds = -1.0;
+					}
+					break;
+				default:
+					break;
 			}
-
-			final String econdSplit[] = dataStrSplit[1].split(",");
-			final int ecSplitNum = econdSplit.length;
-			if (ecSplitNum != 3) {
-				OLog.err("Parsing failed " + this.getName());
-				return Status.FAILED;
-			}
-
-			try {
-				container.conductivity = Double.parseDouble(econdSplit[0]);
-			} catch (NumberFormatException e) {
-				container.conductivity = -1.0;
-			}
-
-			try {
-				container.tds = Double.parseDouble(econdSplit[1]);
-			} catch (NumberFormatException e) {
-				container.tds = -1.0;
-			}
-
-			try {
-				container.salinity = Double.parseDouble(econdSplit[2]);
-			} catch (NumberFormatException e) {
-				container.salinity = -1.0;
-			}
-
-			return Status.OK;
+			return;
 		}
 	}
 
@@ -626,6 +646,17 @@ public class SensorArrayController extends AbstractController implements
 		public TemperatureSensor(BluetoothController bluetooth) {
 			super(bluetooth);
 			this.setName("Temperature Sensor");
+
+			/* Configure the response matchers */ // TODO Should be abstracted
+			R_RESP_PREF  = "TM: ";
+			R_DATA_PART	 = "[-]*[0-9]+\\.*[0-9]*";
+			R_RESP_DATA  = R_DATA_PART + "," + R_DATA_PART;
+			R_RESP_OK  	 = "\\*OK";
+			R_RESP_ERR 	 = "\\*ERR";
+
+			//this.setTimeout(2000); //TODO
+			
+			return;
 		}
 
 		@Override
@@ -645,34 +676,58 @@ public class SensorArrayController extends AbstractController implements
 			return send(CALIBRATE_CMD_STR.getBytes());
 		}
 
+//		@Override
+//		public Status getParsedData(WaterQualityData container) {
+//			if (container == null) {
+//				OLog.err("Data container is null for " + this.getName());
+//				return Status.FAILED;
+//			}
+//
+//			final byte[] data = this.getReceivedData();
+//			if (data == null) {
+//				OLog.err("Received data buffer is null for " + this.getName());
+//				return Status.FAILED;
+//			}
+//			final String dataStr = new String(data).trim();
+//			final String dataStrSplit[] = dataStr.split(" ");
+//			final int splitNum = dataStrSplit.length;
+//
+//			if (splitNum != 2) {
+//				OLog.err("Parsing failed " + this.getName());
+//				return Status.FAILED;
+//			}
+//
+//			try {
+//				container.temperature = Double.parseDouble(dataStrSplit[1]);
+//			} catch (NumberFormatException e) {
+//				container.temperature = -1.0;
+//			}
+//
+//			return Status.OK;
+//		}
+
 		@Override
-		public Status getParsedData(WaterQualityData container) {
+		protected void handleParsedData(WaterQualityData container, int count, String match) {
 			if (container == null) {
-				OLog.err("Data container is null for " + this.getName());
-				return Status.FAILED;
+				return;
 			}
-
-			final byte[] data = this.getReceivedData();
-			if (data == null) {
-				OLog.err("Received data buffer is null for " + this.getName());
-				return Status.FAILED;
+			
+			if (match == null) {
+				return;
 			}
-			final String dataStr = new String(data).trim();
-			final String dataStrSplit[] = dataStr.split(" ");
-			final int splitNum = dataStrSplit.length;
-
-			if (splitNum != 2) {
-				OLog.err("Parsing failed " + this.getName());
-				return Status.FAILED;
+			
+			if (count != 1) {
+				return;
 			}
 
 			try {
-				container.temperature = Double.parseDouble(dataStrSplit[1]);
+				container.temperature = Double.parseDouble(match);
 			} catch (NumberFormatException e) {
+				OLog.err("Failed to parse value: " + match);
 				container.temperature = -1.0;
 			}
-
-			return Status.OK;
+			
+			return;
 		}
 	}
 
@@ -684,6 +739,17 @@ public class SensorArrayController extends AbstractController implements
 		public TurbiditySensor(BluetoothController bluetooth) {
 			super(bluetooth);
 			this.setName("Turbidity Sensor");
+
+			/* Configure the response matchers */ // TODO Should be abstracted
+			R_RESP_PREF  = "TU: ";
+			R_DATA_PART	 = "[-]*[0-9]+\\.*[0-9]*";
+			R_RESP_DATA  = R_DATA_PART;
+			R_RESP_OK  	 = "\\*OK";
+			R_RESP_ERR 	 = "\\*ERR";
+			
+			//this.setTimeout(2000); //TODO
+			
+			return;
 		}
 
 		@Override
@@ -704,44 +770,27 @@ public class SensorArrayController extends AbstractController implements
 		}
 
 		@Override
-		public Status getParsedData(WaterQualityData container) {
+		protected void handleParsedData(WaterQualityData container, int count, String match) {
 			if (container == null) {
-				OLog.err("Data container is null for " + this.getName());
-				return Status.FAILED;
+				return;
 			}
-
-			final byte[] data = this.getReceivedData();
-			if (data == null) {
-				OLog.err("Received data buffer is null for " + this.getName());
-				return Status.FAILED;
+			
+			if (match == null) {
+				return;
 			}
-			final String dataStr = new String(data).trim();
-			final String dataStrSplit[] = dataStr.split(" ");
-			final int splitNum = dataStrSplit.length;
-
-			if (splitNum != 2) {
-				OLog.err("Parsing failed " + this.getName());
-				return Status.FAILED;
+			
+			if (count != 1) {
+				return;
 			}
 
 			try {
-				container.turbidity = Double.parseDouble(dataStrSplit[1]);
+				container.turbidity = Double.parseDouble(match);
 			} catch (NumberFormatException e) {
+				OLog.err("Failed to parse value: " + match);
 				container.turbidity = -1.0;
 			}
-
-			return Status.OK;
+			
+			return;
 		}
-	}
-
-	/*************************/
-	/** Shared Enumerations **/
-	/*************************/
-	public enum State {
-		UNKNOWN, READY, BUSY
-	}
-	
-	public enum ReceiveStatus {
-		COMPLETE, PARTIAL, IN_PROGRESS, FAILED, UNKNOWN
 	}
 }

@@ -12,9 +12,12 @@ import org.json.JSONObject;
 
 import net.oukranos.oreadv1.interfaces.HttpEncodableData;
 import net.oukranos.oreadv1.interfaces.JsonEncodableData;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private String _siteDeviceId = "";
 	private String _context = "";
 	private List<SiteDeviceReportData> _reportDataList = null;

@@ -6,7 +6,7 @@ import net.oukranos.oreadv1.interfaces.ConnectivityBridgeIntf;
 import net.oukranos.oreadv1.interfaces.InternetBridgeIntf;
 import net.oukranos.oreadv1.types.SendableData;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
@@ -20,6 +20,9 @@ import org.apache.http.util.EntityUtils;
 import android.content.Context;
 
 public class AndroidInternetBridge implements InternetBridgeIntf {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private static final int HTTP_ERROR_CODE_THRESHOLD = 300;
 	
 	private static AndroidInternetBridge _androidInternetBridge = null;

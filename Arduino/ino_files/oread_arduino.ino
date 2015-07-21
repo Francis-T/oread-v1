@@ -5,6 +5,10 @@
 
 #ifndef __USE_ARDUINO__
 #include "oread_arduino.h"
+#else
+#include <OneWire.h>
+#include <Wire.h>
+#include <HardwareSerial.h>
 #endif
 
 #ifndef TRUE
@@ -26,10 +30,20 @@
 #define status_t        int
 
 #define SENSOR_READ_TIMEOUT 5000
-#define SENSOR_LIST_SIZE    5
+#define SENSOR_LIST_SIZE    6
 #define SENS_BUF_MAX        32
 
 #define DUMMY_SENSOR_ID     0
+#define MASTER_I2C_ADDR     0
+#define HIGHEST_I2C_ADDR    127
+
+#define REQUEST_BYTE_COUNT  32
+
+#define WATER_LVL_MON 8
+#define VALVE_CTRL    9
+#define PUMP_CTRL     10
+#define FILL_VALVE    11
+#define DRAIN_VALVE   12
 
 /** Type Definitions **/
 /* enum for the different Sensor States */
@@ -39,6 +53,10 @@ typedef enum sensorStates {  SENSOR_STARTED,
 
 /* typedef for sensor read functions */
 typedef status_t (*fSensReadFunc_t)(int sensId);
+/* typedef for sensor calibrate functions */
+typedef status_t (*fSensCalibrateFunc_t)(int sensId, char param);
+/* typedef for sensor  info */
+typedef status_t (*fSensInfoFunc_t)(int sensId);
 
 /* typedef for the Sensor Info struct */
 typedef struct sensorInfo
@@ -83,13 +101,28 @@ void serialEvent2();
 void serialEvent3();
 
 status_t proc_readSensor(char* pMsg);
-status_t proc_drainWaterReservoir();
+status_t proc_calibrateSensor(char* pMsg);
+status_t proc_getSensorInfo(char* pMsg);
+status_t proc_forceSensor(char* pMsg);
+status_t proc_i2cCommand(char* pMsg);
 status_t proc_processInput(char* pMsg, int iLen);
 
 status_t sens_atlasRead(int iSensId);
-status_t sens_atlasSendCmd(tSensor_t* pSensor, char* pCmd);
+status_t sens_atlasInfo(int iSensId);
+status_t sens_atlasCalibrate(int iSensId, char cParam);
+status_t sens_atlasSendCmd(tSensor_t* pSensor, const char* pCmd);
+status_t sens_turbidityRead(int iSensId);
+status_t sens_turbidityInfo(int iSensId);
+status_t sens_turbidityCalibrate(int iSensId, char cParam);
 void sens_dataFinished(tSensor_t* pSensor);
 int sens_initSensors(void);
+
+status_t auto_openFillValve(int iValveId, char* pMsg);
+status_t auto_closeFillValve(int iValveId, char* pMsg);
+status_t auto_openDrainValve(int iValveId, char* pMsg);
+status_t auto_closeDrainValve(int iValveId, char* pMsg);
+status_t auto_startPump(char* pMsg);
+status_t auto_stopPump(char* pMsg);
 
 status_t com_receiveUserInput();
 status_t com_sendResponse();
@@ -102,8 +135,10 @@ int utl_getField(char* s1, char* s2, int iTgtField, char cDelim);
 int utl_compare(const char* s1, const char* s2, int iLen);
 void utl_clearBuffer(void* pBuf, int iSize,  int iLen);
 int utl_strLen(const char* s1);
-int utl_strCpy(char* pDest, const char* pSrc, int iLen);
-int utl_strCat(char* pDest, const char* pSrc, int iLen);
+int utl_strNCpy(char* pDest, const char* pSrc, int iLen);
+int utl_strCpy(char* pDest, const char* pSrc);
+int utl_strNCat(char* pDest, const char* pSrc, int iLen);
+int utl_strCat(char* pDest, const char* pSrc);
 
 void dbg_print(const char* pTag, const char* pMsg, const char* pExtra);
 void dbg_printUL(const char* pTag, const char* pMsg, unsigned long ulVal);
@@ -116,16 +151,40 @@ tSensor_t _tSensor[SENSOR_LIST_SIZE] =
     { "pH", 10, SENSOR_STOPPED, Serial1, &aSensDataBuf[0][0], 0, FALSE, 0 },
     { "DO", 11, SENSOR_STOPPED, Serial2, &aSensDataBuf[1][0], 0, FALSE, 0 },
     { "EC", 12, SENSOR_STOPPED, Serial3, &aSensDataBuf[2][0], 0, FALSE, 0 },
-    { "TM",  9, SENSOR_STOPPED,  Serial, &aSensDataBuf[3][0], 0, FALSE, 0 }
+    { "TM",  9, SENSOR_STOPPED,  Serial, &aSensDataBuf[3][0], 0, FALSE, 0 },
+    { "TU",  0, SENSOR_STOPPED,  Serial, &aSensDataBuf[4][0], 0, FALSE, 0 }
 };
 
+/* Lookup table for the sensor read functions */
 fSensReadFunc_t _fSensorReadFunc[SENSOR_LIST_SIZE] =
 {
     NULL,
     sens_atlasRead,
     sens_atlasRead,
     sens_atlasRead,
-    NULL /* later, sens_temperatureRead() */
+    sens_temperatureRead,
+    sens_turbidityRead
+};
+
+/* Lookup table for the sensor info functions */
+fSensInfoFunc_t _fSensorInfoFunc[SENSOR_LIST_SIZE] =
+{
+    NULL,
+    sens_atlasInfo,
+    sens_atlasInfo,
+    sens_atlasInfo,
+    sens_temperatureInfo,
+    sens_turbidityInfo
+};
+
+fSensCalibrateFunc_t _fSensorCalibrateFunc[SENSOR_LIST_SIZE] =
+{
+    NULL,
+    sens_atlasCalibrate,
+    sens_atlasCalibrate,
+    sens_atlasCalibrate,
+    sens_temperatureCalibrate,
+    sens_turbidityCalibrate
 };
 
 /* Input/Output:
@@ -140,6 +199,13 @@ fSensReadFunc_t _fSensorReadFunc[SENSOR_LIST_SIZE] =
 #define MOD_NAME "main"
 void setup() {
     Serial.begin(9600);
+    Wire.begin();
+    pinMode(VALVE_CTRL, OUTPUT);
+    pinMode(PUMP_CTRL, OUTPUT);
+    pinMode(FILL_VALVE, OUTPUT);
+    pinMode(DRAIN_VALVE, OUTPUT);
+    pinMode(WATER_LVL_MON, INPUT);
+    
     utl_clearBuffer(_aRxBuffer, sizeof(char), SZ_RX_BUFFER);
     utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
 
@@ -199,18 +265,22 @@ void serialEventRead(tSensor_t* pSensor, const char* aSerialName)
 {
     int iOffs = pSensor->iBufOffset;
     char cRead = '\0';
+    char cIsSensorActive = FALSE;
+    
+    if (pSensor->eState == SENSOR_READING) {
+      cIsSensorActive = TRUE;
+    }
 
     while ((pSensor->aSerial).available() > 0)
     {
         if (iOffs == 0)
         {
             utl_clearBuffer(pSensor->aBuf, sizeof(char), SENS_BUF_MAX);
-            utl_strCpy(pSensor->aBuf, pSensor->aName, 2);
+            utl_strNCpy(pSensor->aBuf, pSensor->aName, 2);
             pSensor->aBuf[2] = ':';
             pSensor->aBuf[3] = ' ';
             iOffs += 4;
         }
-
         if (iOffs >= SENS_BUF_MAX)
         {
             dbg_print(aSerialName, "Sensor buffer is full", pSensor->aName);
@@ -218,6 +288,13 @@ void serialEventRead(tSensor_t* pSensor, const char* aSerialName)
         }
 
         cRead = (pSensor->aSerial).read();
+        
+        /* Flush received data if the current sensor is not actively reading */
+        //if (cIsSensorActive != TRUE)
+        //{
+        //  cRead = '\0';
+        //  continue;
+        //}
 
         if (!(cRead < ' ') && !(cRead > '~'))
         {
@@ -302,6 +379,290 @@ status_t proc_readSensor(char* pMsg) {
     return STATUS_OK;
 }
 
+status_t proc_calibrateSensor(char* pMsg) 
+{
+    int iSensId;
+    char cCalParam;
+    char aParams[5];
+
+    /* Extract the Sensor Id target for this read */
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 2, ' ');
+    iSensId = utl_atoi(aParams);
+
+    /* Ensure that we're not accessing invalid sensor IDs */
+    if ( (iSensId <= DUMMY_SENSOR_ID) || (iSensId >= SENSOR_LIST_SIZE) ) {
+        dbg_print(MOD_NAME, "Error", "Invalid Sensor Id");
+        return STATUS_FAILED;
+    }
+
+    /* Extract the Calibration Param for this read */
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 1, ' ');
+    cCalParam = aParams[0];
+
+    /* Calibration parameter should be an uppercase letter */ 
+    if ( (cCalParam < 'A') || (cCalParam > 'Z' ) ) {
+        dbg_print(MOD_NAME, "Error", "Invalid Calibration Param");
+        return STATUS_FAILED;
+    }
+
+    /* Prepare the sensor */
+    _tSensor[iSensId].eState = SENSOR_READING;
+    _tSensor[iSensId].bIsComplete = FALSE;
+
+    /* Call the calibrate function for this sensor */
+    if (_fSensorCalibrateFunc[iSensId] != NULL) {
+        _fSensorCalibrateFunc[iSensId](iSensId, cCalParam);
+    }
+
+    return STATUS_OK;
+}
+
+status_t proc_getSensorInfo(char* pMsg)
+{
+    int iSensId;
+    char cCalParam;
+    char aParams[5];
+
+    /* Extract the Sensor Id target for this read */
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 2, ' ');
+    iSensId = utl_atoi(aParams);
+
+    /* Ensure that we're not accessing invalid sensor IDs */
+    if ( (iSensId <= DUMMY_SENSOR_ID) || (iSensId >= SENSOR_LIST_SIZE) ) {
+        dbg_print(MOD_NAME, "Error", "Invalid Sensor Id");
+        return STATUS_FAILED;
+    }
+
+    /* Prepare the sensor */
+    _tSensor[iSensId].eState = SENSOR_READING;
+    _tSensor[iSensId].bIsComplete = FALSE;
+
+    /* Call the info function for this sensor */
+    if (_fSensorInfoFunc[iSensId] != NULL) {
+        _fSensorInfoFunc[iSensId](iSensId);
+    }
+
+    return STATUS_OK;
+}
+
+status_t proc_forceSensor(char* pMsg)
+{
+    int iSpaceCount;
+    int iSensId;
+    char aParams[5];
+    char* pCmd = NULL;
+
+    /* Extract the Sensor Id target for this read */
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 2, ' ');
+    iSensId = utl_atoi(aParams);
+
+    /* Ensure that we're not accessing invalid sensor IDs */
+    if ( (iSensId <= DUMMY_SENSOR_ID) || (iSensId >= SENSOR_LIST_SIZE) ) {
+        dbg_print(MOD_NAME, "Error", "Invalid Sensor Id");
+        return STATUS_FAILED;
+    }
+
+    pCmd = pMsg;
+    for (iSpaceCount = 0; iSpaceCount < 2; iSpaceCount++) {
+        pCmd = strchr(pCmd, ' ') + 1;
+        if (pCmd == NULL) {
+            dbg_print(MOD_NAME, "Error", "Invalid Sensor Command");
+            return STATUS_FAILED;
+        } 
+    }
+
+    /* Prepare the sensor */
+    _tSensor[iSensId].eState = SENSOR_READING;
+    _tSensor[iSensId].bIsComplete = FALSE;
+
+    /* Call the send function for this sensor */
+    sens_atlasSendCmd(&_tSensor[iSensId], pCmd);
+
+    return STATUS_OK;
+}
+
+/*
+ * @function     proc_i2cCommand()
+ * @description  Relays a command to a child environment node connected
+ *                 to this one via I2C
+ * @returns      exit status
+ */
+status_t proc_i2cCommand(char* pMsg)
+{
+    int iRet = -1;
+    int iBufIdx = 0;
+    int iAddr;
+    char aParams[5];
+    char aCmd[5];
+    char aMsg[10];
+    char aResp[33];
+    char* pCmd = NULL;
+    boolean expectResponse = false;
+
+    /* Extract the target address */
+    dbg_print(MOD_NAME, "Info", "Extracting Address...");
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 2, ' ');
+    iAddr = utl_atoi(aParams);
+
+    /* Ensure that we're not accessing invalid I2C Addresses */
+    if ( (iAddr <= MASTER_I2C_ADDR) || (iAddr > HIGHEST_I2C_ADDR) ) {
+        dbg_print(MOD_NAME, "Error", "Invalid Address");
+        return STATUS_FAILED;
+    }
+
+    /* Extract the request flag */
+    dbg_print(MOD_NAME, "Info", "Extracting Request Flag...");
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 3, ' ');
+    if ((aParams[0] == 'Y') || (aParams[0] == 'y'))
+    {
+      expectResponse = true;
+    }
+    
+    /* Extract the command string */
+    dbg_print(MOD_NAME, "Info", "Extracting Command...");
+    utl_clearBuffer(aCmd, sizeof(aCmd[0]), 5);
+    utl_getField(pMsg, aCmd, 4, ' ');
+
+    /* Extract the param string */
+    dbg_print(MOD_NAME, "Info", "Extracting Param...");
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 5, ' ');
+
+    /* Construct the message */
+    dbg_print(MOD_NAME, "Info", "Constructing Message...");
+    utl_clearBuffer(aMsg, sizeof(aMsg[0]), 10);
+    utl_strCpy(aMsg, aCmd);
+    utl_strCat(aMsg, " ");
+    utl_strCat(aMsg, aParams);
+
+    /* Send through I2C */
+    dbg_print(MOD_NAME, "Info", "Transmitting Message...");
+    Wire.beginTransmission(iAddr);
+    Wire.write(aMsg);
+    iRet = Wire.endTransmission();
+    if (iRet != 0)
+    {
+        Serial.print("Failed to send to I2C device(");
+        Serial.print(iAddr);
+        Serial.println(")");
+        return STATUS_FAILED;
+    }
+    
+    /* If this command has no expected responses, then we can return at this point */
+    if (expectResponse == false)
+    {
+      return STATUS_OK;
+    }
+    /* Get the response */
+    dbg_print(MOD_NAME, "Info", "Loading Response...");
+    if (_debugMode)
+    {
+      Serial.print("Bytes Available: ");
+      Serial.print(Wire.available());
+      Serial.print("\r\n");
+    }
+    
+    if (aCmd[0] != 'x')
+    {
+      /* Delay for a bit before attempting to get the response, just in case */
+      delayMicroseconds(500);
+  
+      /* Request for a response */
+      dbg_print(MOD_NAME, "Info", "Requesting Response...");
+      Wire.requestFrom(iAddr, REQUEST_BYTE_COUNT, true);
+  
+      /* Delay for a bit before attempting to get the response, just in case */
+      delayMicroseconds(1000);
+  
+      /* Clear the response buffer */
+      utl_clearBuffer(aResp, sizeof(aResp[0]), 33);
+      while (Wire.available() > 0)
+      {
+          if (iBufIdx > REQUEST_BYTE_COUNT)
+          {
+              /* Error: Received message is too long */
+              dbg_print(MOD_NAME, "Error", "Received message too long");
+              return STATUS_FAILED;
+          }
+  
+          /* Read a byte into the Rx buffer */
+          aResp[iBufIdx] = Wire.read();
+  
+          iBufIdx++;
+          delay(50);
+      }
+    }
+    else
+    {
+      for (int i=0; i < 32; i++)
+      {
+        /* Delay for a bit before attempting to get the response, just in case */
+        delayMicroseconds(500);
+    
+        /* Request for a response */
+        dbg_print(MOD_NAME, "Info", "Requesting Response...");
+        Wire.requestFrom(iAddr, REQUEST_BYTE_COUNT, true);
+    
+        /* Delay for a bit before attempting to get the response, just in case */
+        delayMicroseconds(1000);
+    
+        /* Clear the response buffer */
+        utl_clearBuffer(aResp, sizeof(aResp[0]), 33);
+ 
+        while (Wire.available() > 0)
+        {
+            if (iBufIdx > REQUEST_BYTE_COUNT)
+            {
+                /* Error: Received message is too long */
+                dbg_print(MOD_NAME, "Error", "Received message too long");
+                return STATUS_FAILED;
+            }
+    
+            /* Read a byte into the Rx buffer */
+            aResp[iBufIdx] = Wire.read();
+    
+            iBufIdx++;
+            delay(50);
+        }
+        
+        if (aResp[0] >= '3') {
+          break;
+        }
+        delay(10000);
+      }
+    }
+
+
+    dbg_print(MOD_NAME, "Info", "Finished. Contents: ");
+//    Serial.print("Node[");
+//    Serial.print(iAddr);
+//    Serial.print("]: ");
+//    Serial.print("DONE");
+//    Serial.print("\r\n");
+    if (_debugMode)
+    {
+      for (int i = 0; i < 32; i++)
+      {
+        Serial.print("[");
+        Serial.print(aResp[i]);
+        Serial.print("] ");
+        if (((i+1)%16) == 0) {
+          Serial.print("\r\n");
+        }
+      }
+    }
+    Serial.print(aResp);
+    Serial.print("\r\n");
+
+    return STATUS_OK;
+}
+
 /*
  * @function     proc_processInput()
  * @description  Processes the user input or command
@@ -314,6 +675,28 @@ status_t proc_processInput(char* pMsg, int iLen) {
 
     if (utl_compare(pMsg, "READ", 4) == MATCHED) {
        proc_readSensor(pMsg);
+    } else if (utl_compare(pMsg, "DEBUG", 5) == MATCHED) {
+        _debugMode = !_debugMode;
+    } else if (utl_compare(pMsg, "INFO", 4) == MATCHED) {
+        proc_getSensorInfo(pMsg); /* TODO */
+    } else if (utl_compare(pMsg, "CALIB", 5) == MATCHED) {
+        proc_calibrateSensor(pMsg); /* TODO */
+    } else if (utl_compare(pMsg, "FORCE", 5) == MATCHED) {
+        proc_forceSensor(pMsg); /* TODO */
+    } else if (utl_compare(pMsg, "FILL START", 10) == MATCHED) {
+        auto_openFillValve(FILL_VALVE, pMsg);
+    } else if (utl_compare(pMsg, "FILL STOP", 9) == MATCHED) {
+        auto_closeFillValve(FILL_VALVE, pMsg);
+    } else if (utl_compare(pMsg, "DRAIN START", 11) == MATCHED) {
+        auto_openDrainValve(DRAIN_VALVE, pMsg);
+    } else if (utl_compare(pMsg, "DRAIN STOP", 10) == MATCHED) {
+        auto_closeDrainValve(DRAIN_VALVE, pMsg);
+    } else if (utl_compare(pMsg, "PUMP START", 10) == MATCHED) {
+        auto_startPump(pMsg); /* TODO */
+    } else if (utl_compare(pMsg, "PUMP STOP", 9) == MATCHED) {
+        auto_stopPump(pMsg); /* TODO */  
+    } else if (utl_compare(pMsg, "I2C", 3) == MATCHED) {
+        proc_i2cCommand(pMsg); /* TODO */
     #ifndef __USE_ARDUINO__
     } else if (utl_compare(pMsg, "QUIT", 4)) {
         _iLoopCountdown = 0;
@@ -336,7 +719,24 @@ status_t sens_atlasRead(int iSensId)
     return sens_atlasSendCmd(&_tSensor[iSensId], "R");
 }
 
-status_t sens_atlasSendCmd(tSensor_t* pSensor, char* pCmd)
+status_t sens_atlasInfo(int iSensId)
+{
+    _tSensor[iSensId].lReadStartTime = millis();
+    return sens_atlasSendCmd(&_tSensor[iSensId], "I");
+}
+
+status_t sens_atlasCalibrate(int iSensId, char cParam)
+{
+    char aCalStr[3];
+
+    utl_clearBuffer(aCalStr, sizeof(aCalStr[0]), 3);
+
+    /* TODO */
+
+    return sens_atlasSendCmd(&_tSensor[iSensId], "I");
+}
+
+status_t sens_atlasSendCmd(tSensor_t* pSensor, const char* pCmd)
 {
     if (pCmd == NULL)
     {
@@ -352,6 +752,222 @@ status_t sens_atlasSendCmd(tSensor_t* pSensor, char* pCmd)
     return STATUS_OK;
 }
 
+status_t sens_turbidityRead(int iSensId)
+{
+    int TU_samplesize = 4;
+    int TU_array[TU_samplesize];
+    int TU_sum;
+    float TU_average;
+    float TU_value;
+    int i;
+    char aTuValStr[8];
+    
+    /* Read the input on analog pin 0 */
+    /* Puts 4 values into an array */
+    for (i = 0; i < TU_samplesize; i++ )
+    {
+#ifdef __USE_ARDUINO__ 
+        TU_array[i] = analogRead(A0);
+//        Serial.print("Val#");
+//        Serial.print(i);
+//        Serial.print(": ");
+//        Serial.println(TU_array[i]);
+#else
+        TU_array[i] = rand()*100;
+#endif
+    }
+  	
+    /* Sum of the values in the array   */
+    for (int i = 0; i < TU_samplesize; ++i)
+    {
+       TU_sum += TU_array[i];
+    }
+    
+//    Serial.print("Sum: ");
+//    Serial.println(TU_sum);
+    
+    /* Average */
+    TU_average = TU_sum / TU_samplesize;
+    
+//    Serial.print("Ave: ");
+//    Serial.println(TU_average);
+    
+    /* Turbidity Equation */
+    TU_value = ((-0.1766* (TU_average))+ 154.38);
+
+//    Serial.print("Val: ");
+//    Serial.println(TU_value);
+    
+//    /* Set the ceiling value to 999.00 */
+//    if (TU_value > 999.00)
+//    {
+//        TU_value = 999.00;
+//    }
+
+    utl_clearBuffer(aTuValStr, sizeof(char), 8);
+    dtostrf(TU_value, 5, 2, aTuValStr);
+
+    /* Write to buffer */
+    utl_clearBuffer(_tSensor[iSensId].aBuf, sizeof(char), SENS_BUF_MAX);
+    utl_strNCpy(_tSensor[iSensId].aBuf, _tSensor[iSensId].aName, 2);
+    utl_strNCat(_tSensor[iSensId].aBuf, ": ", 2);
+    utl_strNCat(_tSensor[iSensId].aBuf, aTuValStr, 7);
+
+    _tSensor[iSensId].bIsComplete = TRUE;
+    sens_dataFinished(&_tSensor[iSensId]);
+
+    return STATUS_OK;
+}
+
+status_t sens_turbidityCalibrate(int iSensId, char cParam)
+{
+    /* TODO: Perform turbidity calibrate operations here */
+    return STATUS_OK;
+}
+
+status_t sens_turbidityInfo(int iSensId)
+{
+    /* TODO: Perform turbidity info operations here */
+    return STATUS_OK;
+}
+
+status_t sens_temperatureRead(int iSensId)
+{
+  OneWire tTempSensor(_tSensor[iSensId].iPin);
+  char aTempValStr[8];
+  char aRawValStr[8];
+  byte aData[12];
+  byte aAddr[8];
+  byte bType = 0;
+  byte bPresent = 0;
+  float fCelsius = 0.0f;
+  float fFahrenheit = 0.0f;
+  int16_t raw = 0;
+  byte bCfg = 0;
+  int i = 0;
+  
+  if ( !tTempSensor.search(aAddr) ) { 
+      // If sensor is not connected or broken, address will not be detected
+      dbg_print(MOD_NAME, "No more addresses", _tSensor[iSensId].aName);
+      tTempSensor.reset_search();
+      
+      /* Close the sensor properly */
+      utl_clearBuffer(_tSensor[iSensId].aBuf, sizeof(char), SENS_BUF_MAX);
+      _tSensor[iSensId].bIsComplete = TRUE;
+      sens_dataFinished(&_tSensor[iSensId]);
+      
+      delay(250);
+      return STATUS_FAILED;
+  }
+
+  /* Check if the address is valid */    
+  if (OneWire::crc8(aAddr, 7) != aAddr[7]) {
+      dbg_print(MOD_NAME, "CRC is not valid", _tSensor[iSensId].aName);
+      
+      /* Close the sensor properly */
+      utl_clearBuffer(_tSensor[iSensId].aBuf, sizeof(char), SENS_BUF_MAX);
+      _tSensor[iSensId].bIsComplete = TRUE;
+      sens_dataFinished(&_tSensor[iSensId]);
+      
+      return STATUS_FAILED;
+  }
+  
+  /* Check the type of transistor
+   *  The first ROM byte indicates which chip */
+  switch (aAddr[0]) {
+      case 0x10:
+          // @LOG "  Chip = DS18S20"
+          bType = 1;
+          break;
+      case 0x28:
+          // @LOG "  Chip = DS18B20"
+          bType = 0;
+          break;
+      case 0x22:
+          // @LOG "  Chip = DS1822"
+          bType = 0;
+          break;
+      default:
+          dbg_print(MOD_NAME, "Device is not a DS18x20 family device.", _tSensor[iSensId].aName);
+          
+          /* Close the sensor properly */
+          utl_clearBuffer(_tSensor[iSensId].aBuf, sizeof(char), SENS_BUF_MAX);
+          _tSensor[iSensId].bIsComplete = TRUE;
+          sens_dataFinished(&_tSensor[iSensId]);
+      
+          return STATUS_FAILED;
+  }
+  
+  tTempSensor.reset();
+  tTempSensor.select(aAddr);  // obtains address of sensor 
+  tTempSensor.write(0x44, 1); // start conversion, with parasite power on at the end
+
+  delay(1000);     // maybe 750ms is enough, maybe not
+  // we might do a tTempSensor.depower() here, but the reset will take care of it.
+
+  bPresent = tTempSensor.reset();
+  tTempSensor.select(aAddr);    
+  tTempSensor.write(0xBE);         // Read Scratchpad
+
+
+  for ( i = 0; i < 9; i++) {         // we need 9 bytes
+      aData[i] = tTempSensor.read(); // gets aData from sensor
+  }
+
+  // Convert the aData to actual temperature
+  // because the result is a 16 bit signed integer, it should
+  // be stored to an "int16_t" type, which is always 16 bits
+  // even when compiled on a 32 bit processor.
+  raw = (aData[1] << 8) | aData[0];
+  if (bType) {
+      raw = raw << 3; // 9 bit resolution default
+      if (aData[7] == 0x10) {
+          // "count remain" gives full 12 bit resolution
+          raw = (raw & 0xFFF0) + 12 - aData[6];
+      }
+  } else {
+      bCfg = (aData[4] & 0x60);
+      // at lower res, the low bits are undefined, so let's zero them
+      if (bCfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
+      else if (bCfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+      else if (bCfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+      //// default is 12 bit resolution, 750 ms conversion time
+  }
+  fCelsius = (float)raw / 16.0; // prints out temperature
+  fFahrenheit = fCelsius * 1.8 + 32.0; // converts
+  
+  utl_clearBuffer(aTempValStr, sizeof(char), 8);
+  dtostrf(fCelsius, 5, 2, aTempValStr);
+  itoa(raw, aRawValStr, 10);
+  
+  /* Output the temperature to the receive buffer */
+//  utl_clearBuffer(_tSensor[iSensId].aBuf, sizeof(char), SENS_BUF_MAX);
+//  sprintf(_tSensor[iSensId].aBuf, "%s: %s C", _tSensor[iSensId].aName, aTempValStr);
+
+  /* Write to buffer */
+  utl_clearBuffer(_tSensor[iSensId].aBuf, sizeof(char), SENS_BUF_MAX);
+  utl_strNCpy(_tSensor[iSensId].aBuf, _tSensor[iSensId].aName, 2);
+  utl_strNCat(_tSensor[iSensId].aBuf, ": ", 2);
+  utl_strNCat(_tSensor[iSensId].aBuf, aTempValStr, 7);
+  utl_strNCat(_tSensor[iSensId].aBuf, ",", 1);
+  utl_strNCat(_tSensor[iSensId].aBuf, aRawValStr, 7);
+
+  _tSensor[iSensId].bIsComplete = TRUE;
+  sens_dataFinished(&_tSensor[iSensId]);
+  
+  return STATUS_OK;
+}
+
+status_t sens_temperatureCalibrate(int iSensId, char cParam)
+{
+  return STATUS_OK;
+}
+
+status_t sens_temperatureInfo(int iSensId)
+{
+  return STATUS_OK;
+}
+
 void sens_dataFinished(tSensor_t* pSensor) {
     int iBufLen = 0;
 
@@ -364,11 +980,12 @@ void sens_dataFinished(tSensor_t* pSensor) {
 
     /* Copy into Tx Buf */
     iBufLen = utl_strLen(pSensor->aBuf);
-    utl_strCpy( _aTxBuffer, pSensor->aBuf, iBufLen );
+    utl_strNCpy( _aTxBuffer, pSensor->aBuf, iBufLen );
 
     pSensor->lReadStartTime = 0;
     pSensor->iBufOffset = 0;
     pSensor->bIsComplete = FALSE;
+    pSensor->eState = SENSOR_STARTED;
 
     /* Update the current known Rx Buffer Length */
     _iTxBufferLen = iBufLen;
@@ -386,8 +1003,8 @@ int sens_initSensors(void)
 
 	for (iIdx = 1; iIdx < 4; iIdx++)
 	{
-		pinMode(_tSensor[iIdx].iPin, OUTPUT);
-		digitalWrite(_tSensor[iIdx].iPin, HIGH);
+		//pinMode(_tSensor[iIdx].iPin, OUTPUT);
+		//digitalWrite(_tSensor[iIdx].iPin, HIGH);
 
 		_tSensor[iIdx].aSerial.begin(38400);
 	}
@@ -396,9 +1013,147 @@ int sens_initSensors(void)
 }
 
 #undef MOD_NAME
+/******************************************************************************/
+/* SEC04: Automation Modules                                                  */
+/******************************************************************************/
+#define MOD_NAME "AUTO"
+status_t auto_openFillValve(int iValveId, char* pMsg)
+{
+  int iSafety = 1800;
+  int iCutoff = 1;
+
+  digitalWrite(iValveId, HIGH);
+
+  dbg_print(MOD_NAME, "Info", "Fill valve opened");
+
+  do {
+    if (iSafety <= 0)
+    {
+      break;
+    }
+    
+    iCutoff = digitalRead(WATER_LVL_MON);
+    iSafety--;
+    
+    delay(50);
+  } while(iCutoff > 0);
+
+  digitalWrite(iValveId, LOW);
+  
+  /* Write to buffer */
+  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+  utl_strNCpy(_aTxBuffer, "FV: DONE", 8);
+  _iTxBufferLen = utl_strLen(_aTxBuffer);
+
+  dbg_print(MOD_NAME, "Info", "Fill valve closed");
+
+  return STATUS_OK;
+}
+
+status_t auto_closeFillValve(int iValveId, char* pMsg)
+{
+  digitalWrite(iValveId, LOW);
+  /* Write to buffer */
+  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+  utl_strNCpy(_aTxBuffer, "FV: DONE", 8);
+  _iTxBufferLen = utl_strLen(_aTxBuffer);
+
+  dbg_print(MOD_NAME, "Info", "Fill valve closed");
+
+  return STATUS_OK;
+}
+
+status_t auto_openDrainValve(int iValveId, char* pMsg)
+{
+//int iSafety = 1800;
+//int iCutoff = 1;
+  digitalWrite(iValveId, HIGH);
+//do {
+//  if (iSafety <= 0)
+//  {
+//    break;
+//  }
+//  
+//  iCutoff = digitalRead(WATER_LVL_MON);
+//  iSafety--;
+//  delay(50);
+//  
+//} while(iCutoff > 0);
+//digitalWrite(iValveId, LOW);
+  
+  /* Write to buffer */
+  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+  utl_strNCpy(_aTxBuffer, "DV: DONE", 8);
+  _iTxBufferLen = utl_strLen(_aTxBuffer);
+
+  dbg_print(MOD_NAME, "Info", "Drain valve opened");
+
+  return STATUS_OK;
+}
+
+status_t auto_closeDrainValve(int iValveId, char* pMsg)
+{
+  digitalWrite(iValveId, LOW);
+
+  /* Write to buffer */
+  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+  utl_strNCpy(_aTxBuffer, "DV: DONE", 8);
+  _iTxBufferLen = utl_strLen(_aTxBuffer);
+
+  dbg_print(MOD_NAME, "Info", "Drain valve closed");
+
+  return STATUS_OK;
+}
+
+status_t auto_startPump(char* pMsg)
+{
+  int iSafety = 1800;
+  int iCutoff = 1;
+
+  digitalWrite(PUMP_CTRL, HIGH);
+
+  dbg_print(MOD_NAME, "Info", "Fill valve opened");
+
+  do {
+    if (iSafety <= 0)
+    {
+      break;
+    }
+    
+    iCutoff = digitalRead(WATER_LVL_MON);
+    iSafety--;
+    
+    delay(50);
+  } while(iCutoff > 0);
+
+  digitalWrite(PUMP_CTRL, LOW);
+
+  /* Write to buffer */
+  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+  utl_strNCpy(_aTxBuffer, "PM: DONE", 8);
+  _iTxBufferLen = utl_strLen(_aTxBuffer);
+
+  dbg_print(MOD_NAME, "Info", "Pump stopped");
+
+  return STATUS_OK;
+}
+
+status_t auto_stopPump(char* pMsg)
+{
+  digitalWrite(PUMP_CTRL, LOW);
+
+  /* Write to buffer */
+  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+  utl_strNCpy(_aTxBuffer, "PM: DONE", 8);
+  _iTxBufferLen = utl_strLen(_aTxBuffer);
+
+  dbg_print(MOD_NAME, "Info", "Pump stopped");
+
+  return STATUS_OK;
+}
 
 /******************************************************************************/
-/* SEC04: Communication Modules                                               */
+/* SEC05: Communication Modules                                               */
 /******************************************************************************/
 #define MOD_NAME "com"
 /*
@@ -406,7 +1161,8 @@ int sens_initSensors(void)
  * @description  Receives user input or commands from Serial
  * @returns      exit status
  */
-status_t com_receiveUserInput() {
+status_t com_receiveUserInput()
+{
     int iBufIdx = 0;
 
     #ifndef __USE_ARDUINO__
@@ -444,12 +1200,13 @@ status_t com_receiveUserInput() {
  * @description  Sends a response through Serial
  * @returns      exit status
  */
-status_t com_sendResponse() {
+status_t com_sendResponse()
+{
     int iBytesWritten;
 
-        if (_iTxBufferLen <= 0) {
-          return STATUS_OK;
-        }
+    if (_iTxBufferLen <= 0) {
+      return STATUS_OK;
+    }
 
     dbg_print(MOD_NAME, "Sending a message...", NULL);
 
@@ -459,6 +1216,8 @@ status_t com_sendResponse() {
         /* Error: Whole message not transmitted */
         return STATUS_FAILED;
     }
+    
+    Serial.write("\n");
 
     /* Clear the send buffer once finished transmitting */
     utl_clearBuffer(_aTxBuffer, sizeof(_aTxBuffer[0]), _iTxBufferLen);
@@ -469,10 +1228,11 @@ status_t com_sendResponse() {
 #undef MOD_NAME
 
 /******************************************************************************/
-/* SEC05: Timing Modules                                                      */
+/* SEC06: Timing Modules                                                      */
 /******************************************************************************/
 #define MOD_NAME "tmr"
-status_t tmr_manageSensorTimeouts() {
+status_t tmr_manageSensorTimeouts()
+{
     int iSensIdx;
 
     for (iSensIdx = 1; iSensIdx < SENSOR_LIST_SIZE; iSensIdx++) {
@@ -489,7 +1249,8 @@ status_t tmr_manageSensorTimeouts() {
     return STATUS_OK;
 }
 
-status_t tmr_updateTimeout(tSensor_t* pSensor) {
+status_t tmr_updateTimeout(tSensor_t* pSensor)
+{
     long lElapsedTime = 0;
 
     if (pSensor == NULL) {
@@ -499,6 +1260,12 @@ status_t tmr_updateTimeout(tSensor_t* pSensor) {
 
     if (pSensor->lReadStartTime == 0) {
         dbg_print(MOD_NAME, "Warning", "Read start time is zero");
+        
+        /* Force the sensor read to finish */
+        utl_clearBuffer(pSensor->aBuf, sizeof(pSensor->aBuf[0]), SENS_BUF_MAX);
+        pSensor->iBufOffset = 0;
+        sens_dataFinished(pSensor);
+        
         return STATUS_OK;
     }
 
@@ -517,7 +1284,7 @@ status_t tmr_updateTimeout(tSensor_t* pSensor) {
 #undef MOD_NAME
 
 /******************************************************************************/
-/* SEC05: Utility Modules                                                     */
+/* SEC07: Utility Modules                                                     */
 /******************************************************************************/
 #define MOD_NAME "utl"
 /*
@@ -525,7 +1292,8 @@ status_t tmr_updateTimeout(tSensor_t* pSensor) {
  * @description  Wrapper function for strncmp()
  * @returns      none
  */
-int utl_compare(const char* s1, const char* s2, int iLen) {
+int utl_compare(const char* s1, const char* s2, int iLen)
+{
     return ((strncmp(s1, s2, iLen) == 0) ? MATCHED : NOT_MATCHED);
 }
 
@@ -534,7 +1302,8 @@ int utl_compare(const char* s1, const char* s2, int iLen) {
  * @description  Erases the contents of a buffer up to the specified length
  * @returns      none
  */
-void utl_clearBuffer(void* pBuf, int iSize,  int iLen) {
+void utl_clearBuffer(void* pBuf, int iSize,  int iLen)
+{
     memset(pBuf, 0, iLen * iSize);
 }
 
@@ -543,14 +1312,29 @@ void utl_clearBuffer(void* pBuf, int iSize,  int iLen) {
  * @description Converts the given char string to an integer
  * @returns     Integer equivalent of the char string
  */
-int utl_atoi(const char* s) {
+int utl_atoi(const char* s) 
+{
     return atoi(s);
 }
 
 /*
  * @function    utl_getField()
  * @description Extracts a specific 'field' given a delimited string
- * @returns     An integer status code
+ * @params      s1        - pointer to the string to be searched
+ *              s2        - pointer to the string to write results to
+ *              iTgtField - which field to extract
+ *              cDelim    - delimiter for extracting fields
+ * @returns     An integer status code 
+ * @usage       Given the string testStr = "CALIB SENSOR PH 8.00" and an
+ *               empty char array, outStr:
+ *
+ *              utl_getField(testStr, outStr, 4, ' ');    // returns "8.00" in outStr
+ *              utl_getField(testStr, outStr, 3, ' ');    // returns "PH"   in outStr
+ *              utl_getField("READ ALL", outStr, 2, ' '); // returns "ALL"  in outStr
+ *
+ * @note        For safety, the pointer s2 should point to a char array with
+ *               a large _enough_ size to contain the result; otherwise,
+ *               memory issues might occur
  */
 int utl_getField(char* s1, char* s2, int iTgtField, char cDelim)
 {
@@ -589,16 +1373,30 @@ int utl_strLen(const char* s1)
     return strlen(s1);
 }
 
-int utl_strCpy(char* pDest, const char* pSrc, int iLen)
+int utl_strNCpy(char* pDest, const char* pSrc, int iLen)
 {
     strncpy(pDest, pSrc, iLen);
 
     return STATUS_OK;
 }
 
-int utl_strCat(char* pDest, const char* pSrc, int iLen)
+int utl_strCpy(char* pDest, const char* pSrc)
+{
+    strcpy(pDest, pSrc);
+
+    return STATUS_OK;
+}
+
+int utl_strNCat(char* pDest, const char* pSrc, int iLen)
 {
     strncat(pDest, pSrc, iLen);
+
+    return STATUS_OK;
+}
+
+int utl_strCat(char* pDest, const char* pSrc)
+{
+    strcat(pDest, pSrc);
 
     return STATUS_OK;
 }
@@ -697,4 +1495,5 @@ void dbg_printChar(const char* pTag, const char* pMsg, char cVal)
 
 
 #endif /* __OREAD_ARDUINO_C__ */
+
 

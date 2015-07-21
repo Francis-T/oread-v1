@@ -4,37 +4,30 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.TimeZone;
-
-import org.apache.http.HttpEntity;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.entity.StringEntity;
 
 import net.oukranos.oreadv1.android.AndroidConnectivityBridge;
 import net.oukranos.oreadv1.android.AndroidInternetBridge;
 import net.oukranos.oreadv1.controller.MainController;
 import net.oukranos.oreadv1.interfaces.CameraControlIntf;
 import net.oukranos.oreadv1.interfaces.CapturedImageMetaData;
-import net.oukranos.oreadv1.interfaces.HttpEncodableData;
 import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
 import net.oukranos.oreadv1.interfaces.OreadServiceApi;
 import net.oukranos.oreadv1.interfaces.OreadServiceListener;
 import net.oukranos.oreadv1.manager.ConfigManager;
+import net.oukranos.oreadv1.manager.FilesystemManager.FSMan;
 import net.oukranos.oreadv1.types.CameraTaskType;
-import net.oukranos.oreadv1.types.Configuration;
 import net.oukranos.oreadv1.types.ControllerState;
-import net.oukranos.oreadv1.types.Data;
 import net.oukranos.oreadv1.types.OreadServiceControllerStatus;
 import net.oukranos.oreadv1.types.OreadServiceWaterQualityData;
-import net.oukranos.oreadv1.types.SendableData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
-import net.oukranos.oreadv1.util.ConfigXmlParser;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.types.config.Configuration;
+import net.oukranos.oreadv1.util.OreadLogger;
+import net.oukranos.oreadv1.util.OreadTimestamp;
 
 import android.app.Service;
 import android.content.Context;
@@ -49,6 +42,9 @@ import android.util.Log;
 import android.view.WindowManager;
 
 public class OreadService extends Service implements MainControllerEventHandler, CameraControlIntf  {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private static final int 	DEFAULT_PICTURE_WIDTH  = 640;
 	private static final int 	DEFAULT_PICTURE_HEIGHT = 480;
 	private static final String DEFAULT_DEVICE_CONFIG_URL_BASE = "http://miningsensors.info/deviceconf";
@@ -154,9 +150,6 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		/* Attempt to deactivate the service if possible */
 		deactivateService();
 		
-		/* Destroy the main controller */
-		destroyMainController();
-		
 		OLog.info("Service destroyed.");
 		return;
 	}
@@ -205,6 +198,9 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		
 		this._state = ServiceState.UNKNOWN;
 		
+		/* Destroy the MainController */
+		destroyMainController();
+		
 		return;
 	}
 	
@@ -214,9 +210,15 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	/**********************************************************************/
 	private Status initializeMainController() {
 		if (_mainController == null) {
-			_mainController = MainController.getInstance(this, this._defaultConfigFile);
+			ConfigManager cfgMan = ConfigManager.getInstance();
+			Configuration config = cfgMan.getConfig(this._defaultConfigFile);
+			if (config == null) {
+				OLog.warn("Invalid config file");
+			}
+			
+			_mainController = MainController.getInstance(this);
 			_mainController.registerEventHandler(this);
-			_mainController.initialize();
+			_mainController.initialize(config);
 		}
 		return Status.OK;
 	}
@@ -332,6 +334,9 @@ public class OreadService extends Service implements MainControllerEventHandler,
             _wm.addView(_cameraPreview, params);
 	        /** END EXPERIMENTAL: preview on a service **/
 			//preview.addView(_cameraPreview); // TODO OLD
+		} else {
+			OLog.warn("Camera preview is not null!");
+			_camera.startPreview();
 		}
 		
 		_cameraState = CameraState.READY;
@@ -339,7 +344,8 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		return Status.OK;
 	}
 	
-	private Status cameraCapture(CapturedImageMetaData container) {
+	private Status cameraCapture(CapturedImageMetaData container) {	
+		_cameraCaptureThread = Thread.currentThread();
 		SavePictureCallback lProcessPic = new SavePictureCallback(container);
 		try {
 			_camera.takePicture(null, null, lProcessPic);
@@ -349,8 +355,7 @@ public class OreadService extends Service implements MainControllerEventHandler,
 
 		_cameraState = CameraState.BUSY;
 		
-		/* Wait until the camera capture is received */		
-		_cameraCaptureThread = Thread.currentThread();
+		/* Wait until the camera capture is received */	
 		try {
 			Thread.sleep(5000);
 		} catch (InterruptedException e) {
@@ -371,6 +376,9 @@ public class OreadService extends Service implements MainControllerEventHandler,
 				} catch (Exception e) {
 					OLog.err("Known exception occurred: " + e.getMessage());
 				}
+				
+				_cameraPreview = null;
+				_wm = null;
 			}
 			_camera.release();
 			_camera = null;
@@ -381,58 +389,25 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		return Status.OK;
 	}
 
+	private String getCaptureFilename() {
+		return ( "OREAD_Image" + 
+                 "_" + OreadTimestamp.getDateString() + 
+                 "_" + OreadTimestamp.getTimestampString() + 
+                 ".jpg" );
+	}
 	
-	/* TODO REFACTOR THIS */
 	private void savePictureToFile(CapturedImageMetaData container, byte[] data) {
-		final String LOG_ID_STRING = "[savePictureToFile]";
+        /* Generate the log message parameters */
+		String savePath = FSMan.getDefaultFilePath();
+		String fileName = this.getCaptureFilename();
 		
-		/* Save the marker trace to a file */
-		File saveDir = new File(_savePath);
+		/* Save captured image to file */
+		FSMan.saveFileData(savePath, fileName, data);
 		
-		if (!saveDir.exists())
-		{
-			saveDir.mkdirs();
-		}
+		/* Update the metadata object */
+		container.setCaptureFile(fileName, savePath);
 		
-		Calendar calInstance = Calendar.getInstance(TimeZone.getTimeZone("GMT+8"));
-		int hour = calInstance.get(Calendar.HOUR_OF_DAY);
-		int min = calInstance.get(Calendar.MINUTE);
-		int sec = calInstance.get(Calendar.SECOND);
-		
-		String hourStr = (hour < 10 ? "0" + Integer.toString(hour) : Integer.toString(hour));
-		String minStr = (min < 10 ? "0" + Integer.toString(min) : Integer.toString(min));
-		String secStr = (sec < 10 ? "0" + Integer.toString(sec) : Integer.toString(sec));
-		
-		File saveFile = null;
-
-		saveFile = new File(saveDir, ("OREAD_Image_" + hourStr + minStr + secStr + ".jpg"));
-		
-		try {
-			if (!saveFile.createNewFile())
-			{
-				Log.e(LOG_ID_STRING, "Error: Failed to create save file!");
-				return;
-			}
-		} catch (IOException e1) {
-			e1.printStackTrace();
-		}
-
-		try {
-			FileOutputStream saveFileStream = new FileOutputStream(saveFile);
-			
-			saveFileStream.write(data);
-			
-			saveFileStream.close();
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		
-		/* TODO CHECK IF THE PATHS and NAMES are correct */
-		container.setCaptureFile(saveFile.getName(), saveFile.getParent());
-		
-		OLog.info("Saved! (see FilePath:" + container.getCaptureFilePath() + " FileName:" + container.getCaptureFileName() +" )");
+		return;
 	}
 	
 
@@ -499,7 +474,7 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		public void onPictureTaken(byte[] data, Camera camera) {
 			OLog.info("SavePictureCallback invoked.");
 			savePictureToFile(_saveContainer, data);
-			_camera.startPreview();
+			_camera.stopPreview();
 
 			/* Unblock the thread waiting for the camera capture */
 			if ( (_cameraCaptureThread != null) && (_cameraCaptureThread.isAlive()) ) {
@@ -513,48 +488,6 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		
 	}
 	
-	private void saveConfigFileData(byte[] data) {
-		final String LOG_ID_STRING = "[savePictureToFile]";
-		
-		/* Save the marker trace to a file */
-		File saveDir = new File(_savePath);
-		
-		if (!saveDir.exists())
-		{
-			saveDir.mkdirs();
-		}
-		
-		File saveFile = null;
-
-		saveFile = new File(saveDir, "oread_config.xml");
-		
-		try {
-			if (!saveFile.createNewFile())
-			{
-				Log.e(LOG_ID_STRING, "Error: Failed to create save file!");
-				return;
-			}
-		} catch (IOException e1) {
-			e1.printStackTrace();
-		}
-
-		try {
-			FileOutputStream saveFileStream = new FileOutputStream(saveFile);
-			
-			saveFileStream.write(data);
-			
-			saveFileStream.close();
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		
-		OLog.info("Saved! (see FilePath:" + saveFile.getParent() + 
-							 " FileName:" + saveFile.getName() +" )");
-		return;
-	}
-
 	/**********************************************************************/
 	/**  Task Classes                                                    **/
 	/**********************************************************************/
@@ -578,7 +511,7 @@ public class OreadService extends Service implements MainControllerEventHandler,
 						try {
 							l.handleWaterQualityData();
 						} catch (RemoteException e) {
-							OLog.logToFile("Failed to notify listeners");
+							OLog.err("Failed to notify listeners");
 						}
 					}
 				}
@@ -696,17 +629,17 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		}
 
 		@Override
-		public void runCommand(String command, String params)
+		public String runCommand(String command, String params)
 				throws RemoteException {
 			if (_mainController == null) {
-				return;
+				return Status.FAILED.toString();
 			}
 			
 			_mainController.performCommand(command, params);
 			
 			OLog.info("OreadService MainController Perform Command Invoked");
 			
-			return;
+			return Status.OK.toString();
 		}
 
 		@Override
@@ -715,6 +648,11 @@ public class OreadService extends Service implements MainControllerEventHandler,
 				return new OreadServiceControllerStatus(_mainController.getControllerStatus());
 			}
 			return null;
+		}
+
+		@Override
+		public String getLogs(int lines) throws RemoteException {
+			return OLog.getLastLogMessages(lines);
 		}
 		
 	};

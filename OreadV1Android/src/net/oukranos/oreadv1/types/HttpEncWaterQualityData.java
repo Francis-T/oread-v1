@@ -3,7 +3,7 @@ package net.oukranos.oreadv1.types;
 import java.io.UnsupportedEncodingException;
 
 import net.oukranos.oreadv1.interfaces.HttpEncodableData;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.entity.StringEntity;
@@ -11,6 +11,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public class HttpEncWaterQualityData extends WaterQualityData implements HttpEncodableData {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
 
 	public HttpEncWaterQualityData(int id) {
 		super(id);

@@ -15,7 +15,7 @@ import net.oukranos.oreadv1.interfaces.OreadServiceListener;
 import net.oukranos.oreadv1.types.CalibDataConfig;
 import net.oukranos.oreadv1.types.CalibrationData;
 import net.oukranos.oreadv1.types.WaterQualityData;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 import android.annotation.TargetApi;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -39,6 +39,9 @@ import android.widget.TextView;
 
 @TargetApi(Build.VERSION_CODES.HONEYCOMB)
 public class FragmentCalibration extends Fragment implements OnItemSelectedListener {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private final String root_sd = Environment.getExternalStorageDirectory().toString();
 	private final String loadPath = root_sd + "/OreadPrototype/";
 	

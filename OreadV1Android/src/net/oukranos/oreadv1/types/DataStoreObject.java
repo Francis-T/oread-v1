@@ -1,8 +1,11 @@
 package net.oukranos.oreadv1.types;
 
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class DataStoreObject {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private String _id = "";
 	private String _type = "";
 	private Object _obj = null;

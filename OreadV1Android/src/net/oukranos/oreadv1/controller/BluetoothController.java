@@ -11,10 +11,13 @@ import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class BluetoothController extends AbstractController implements
 		BluetoothEventHandler {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private static BluetoothController _bluetoothController = null;
 
 	private MainControllerInfo _mainInfo = null;
@@ -61,7 +64,7 @@ public class BluetoothController extends AbstractController implements
 	/** AbstractController Methods **/
 	/********************************/
 	@Override
-	public Status initialize() {
+	public Status initialize(Object initializer) {
 		if (_btBridge == null) {
 			_btBridge = new AndroidBluetoothBridge(); // TODO Should not be defined here
 		}

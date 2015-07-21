@@ -1,16 +1,16 @@
 package net.oukranos.oreadv1.controller;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 
 import android.content.Context;
 import net.oukranos.oreadv1.interfaces.AbstractController;
 import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
+import net.oukranos.oreadv1.interfaces.MethodEvaluatorIntf;
 import net.oukranos.oreadv1.types.ChemicalPresenceData;
-import net.oukranos.oreadv1.types.Configuration;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.ControllerStatus;
-import net.oukranos.oreadv1.types.Data;
 import net.oukranos.oreadv1.types.DataStore;
 import net.oukranos.oreadv1.types.DataStoreObject;
 import net.oukranos.oreadv1.types.MainControllerInfo;
@@ -18,18 +18,21 @@ import net.oukranos.oreadv1.types.SiteDeviceData;
 import net.oukranos.oreadv1.types.SiteDeviceImage;
 import net.oukranos.oreadv1.types.SiteDeviceReportData;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.types.Task;
 import net.oukranos.oreadv1.types.WaterQualityData;
+import net.oukranos.oreadv1.types.config.Configuration;
+import net.oukranos.oreadv1.types.config.Data;
+import net.oukranos.oreadv1.types.config.Procedure;
+import net.oukranos.oreadv1.types.config.Task;
+import net.oukranos.oreadv1.types.config.TriggerCondition;
+import net.oukranos.oreadv1.util.ConditionEvaluator;
 import net.oukranos.oreadv1.util.ConfigXmlParser;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
-public class MainController extends AbstractController {
-	@SuppressWarnings("unused")
-	private static final String DEFAULT_DATA_SERVER_URL = "http://miningsensors.ateneo.edu:8080/uploadData";
-	@SuppressWarnings("unused")
-	private static final String DEFAULT_IMAGE_SERVER_URL = "http://miningsensors.ateneo.edu:8080/uploadImage";
-	
+public class MainController extends AbstractController implements MethodEvaluatorIntf {
 	public static final long DEFAULT_SLEEP_INTERVAL = 900000; /* 15m * 60s * 1000ms = 900000 ms */
+	
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
 	
 	private static MainController _mainControllerInstance = null;
 	private Thread _controllerRunThread = null;
@@ -48,6 +51,7 @@ public class MainController extends AbstractController {
 	private SensorArrayController _sensorArrayController = null;
 	private CameraController _cameraController = null;
 	private NetworkController _networkController = null;
+	private AutomationController _deviceController = null;
 
 	private MainControllerInfo _mainInfo = null;
 	private List<MainControllerEventHandler> _eventHandlers = null;
@@ -72,6 +76,7 @@ public class MainController extends AbstractController {
 		
 		return;
 	}
+	
 	private MainController(Context parent, String configPath) {
 		/* Set the main controller's base parameters */
 		this.setName("main");
@@ -154,9 +159,37 @@ public class MainController extends AbstractController {
 	/** AbstractController Methods **/
 	/********************************/
 	@Override
-	public Status initialize() {
+	public Status initialize(Object initializer) {
 		this.setState(ControllerState.UNKNOWN);
 		
+		if (initializer == null) {
+			OLog.err("Invalid initializer object");
+			return Status.FAILED;
+		}
+		
+		String initObjClass = initializer.getClass().getSimpleName();
+		if (initObjClass.equals("Configuration") == false) {
+			OLog.err("Invalid initializer object (expected Configuration): " 
+					+ initObjClass);
+			return Status.FAILED;
+		}
+		
+		Configuration config = (Configuration) initializer;
+		
+		/* Assimilate the config file */
+		if (_mainInfo == null) {
+			_mainInfo = new MainControllerInfo(config, new DataStore());
+		} else {
+			_mainInfo.setConfig(config);
+		}
+		
+		/* Store all Config data objects in the DataStore */
+		List<Data> dataList = _mainInfo.getConfig().getDataList();
+		for (Data d : dataList) {
+			_mainInfo.getDataStore().add(d.getId(), d.getType(), d.getValue());
+		}
+		
+		OLog.info("MainController Initialized.");
 		return Status.OK;
 	}
 
@@ -184,13 +217,15 @@ public class MainController extends AbstractController {
 				return this.getControllerStatus();
 			}
 			
+			this.writeInfo("Command Performed: Initialized Subcontrollers");
 			this.setState(ControllerState.READY);
 		} else if (shortCmdStr.equals("destSubControllers")) {
 			if ( this.unloadSubControllers() != Status.OK ) {
 				this.writeErr("Failed to dest subcontrollers");
 				return this.getControllerStatus();
 			}
-			
+
+			this.writeInfo("Command Performed: Destroy Subcontrollers");
 			this.setState(ControllerState.UNKNOWN);
 		} else if (shortCmdStr.equals("runTask")) {
 			/* Deconstruct the paramStr to retrieve the task to be run */
@@ -243,15 +278,19 @@ public class MainController extends AbstractController {
 			}
 			long stopTime = System.currentTimeMillis();
 			OLog.info("Thread woke up " + (stopTime-startTime) + "ms later." );
+			this.writeInfo("Command Performed: Wait for " + sleepTime + "ms");
 		} else if (shortCmdStr.equals("processImage")) {
 			processImageData(_chemPresenceData);
-			OLog.info("Processed Image Data");
+			this.writeInfo("Command Performed: Process Image Data");
+		} else if (shortCmdStr.equals("clearImage")) {
+			clearImageData();
+			this.writeInfo("Command Performed: Clear Image Data");
 		} else if (shortCmdStr.equals("processData")) {
 			processWaterQualityData(_waterQualityData);
-			OLog.info("Processed Water Quality Data");
+			this.writeInfo("Command Performed: Process Water Quality Data");
 		} else if (shortCmdStr.equals("clearData")) {
 			clearWaterQualityData();
-			OLog.info("Cleared Water Quality Data");
+			this.writeInfo("Command Performed: Clear Water Quality Data");
 		} else if (shortCmdStr.equals("receiveData")) {
 			for (MainControllerEventHandler e : _eventHandlers) {
 				e.onDataAvailable();
@@ -272,6 +311,29 @@ public class MainController extends AbstractController {
 		}
 		
 		return returnStatus;
+	}
+	
+	/********************************/
+	/** MethodEvalutorIntf Methods **/
+	/********************************/
+	@Override
+	public DataStoreObject evaluate(String methodName) {
+		// TODO Auto-generated method stub
+		
+		if (methodName.equals("getCurrentHour()")) {
+			Calendar c = Calendar.getInstance();
+			Integer hour = c.get(Calendar.HOUR_OF_DAY);
+			
+			return DataStoreObject.createNewInstance("getCurrentHour", "integer", hour);
+		} else if (methodName.equals("getCurrentMinute()")) {
+			Calendar c = Calendar.getInstance();
+			Integer minute = c.get(Calendar.MINUTE);
+			
+			return DataStoreObject.createNewInstance("getCurrentMinute", "integer", minute);
+		}
+		
+		
+		return DataStoreObject.createNewInstance("default", "string", "default");
 	}
 
 	/********************/
@@ -333,7 +395,7 @@ public class MainController extends AbstractController {
 		_controllerRunThread.interrupt();
 		
 		try {
-			_controllerRunThread.join();
+			_controllerRunThread.join(10000);
 		} catch (InterruptedException e) {
 			OLog.info("Controller Run Thread Interrupted");
 		}
@@ -341,7 +403,11 @@ public class MainController extends AbstractController {
 		_controllerRunThread = null;
 		
 		/* Unload the subcontrollers */
-		unloadSubControllers();
+		try {
+			unloadSubControllers();
+		} catch (Exception e) {
+			OLog.err("Exception ocurred: " + e.getMessage());
+		}
 		
 		return Status.OK;
 	}
@@ -447,9 +513,6 @@ public class MainController extends AbstractController {
 		this._mainInfo.getDataStore().add("sendable_data_site", "SiteDeviceData", _siteDeviceData);
 		this._mainInfo.getDataStore().add("sendable_image_site", "SiteDeviceImage", _siteDeviceImage);
 		
-		this._mainInfo.getDataStore().add("live_data_url", "LiveDataUrl", "http://miningsensors.info/apidev");
-		
-		
 		/* Initialize all sub-controllers here */
 		_bluetoothController = BluetoothController.getInstance(this._mainInfo);
 		this._mainInfo.addSubController(_bluetoothController);
@@ -459,20 +522,28 @@ public class MainController extends AbstractController {
 		
 		_cameraController = CameraController.getInstance(this._mainInfo);
 		this._mainInfo.addSubController(_cameraController);
-		
+
 		_sensorArrayController = SensorArrayController.getInstance(this._mainInfo);
 		this._mainInfo.addSubController(_sensorArrayController);
 		
-		_bluetoothController.initialize();
-		_networkController.initialize();
-		_cameraController.initialize();
-		_sensorArrayController.initialize();
+		_deviceController = AutomationController.getInstance(this._mainInfo);
+		this._mainInfo.addSubController(_deviceController);
+		
+		_bluetoothController.initialize(null);
+		_networkController.initialize(null);
+		_cameraController.initialize(null);
+		_sensorArrayController.initialize(null);
+		_deviceController.initialize(null);
 		
 		return Status.OK;
 	}
 	
 	private Status unloadSubControllers() {
 		/* Cleanup sub-controllers */
+		if ( _deviceController != null ) {
+			_deviceController.destroy();
+		}
+		
 		if ( _sensorArrayController != null ) {
 			_sensorArrayController.destroy();
 		}
@@ -510,7 +581,7 @@ public class MainController extends AbstractController {
 			return Status.FAILED;
 		}
 		
-		_bluetoothController.initialize();
+		_bluetoothController.initialize(null);
 
 //		OLog.info("Getting paired device names...");
 //		if ( _bluetoothController.getPairedDeviceNames() == null ) {
@@ -534,7 +605,7 @@ public class MainController extends AbstractController {
 		OLog.info("Starting NetworkController...");
 		switch (_networkController.getState()) {
 			case UNKNOWN:
-				retStatus = _networkController.initialize();
+				retStatus = _networkController.initialize(null);
 				if ((retStatus == Status.FAILED) || 
 					(retStatus == Status.UNKNOWN)) {
 					OLog.err("Failed to initialize NetworkController");
@@ -579,8 +650,13 @@ public class MainController extends AbstractController {
 	}
 	
 	private void clearWaterQualityData() {
-		
 		_siteDeviceData.clearReportData();
+		
+		return;
+	}
+	
+	private void clearImageData() {
+		_siteDeviceImage.clearReportData();
 		
 		return;
 	}
@@ -598,20 +674,56 @@ public class MainController extends AbstractController {
 		return;
 	}
 	
+	private MethodEvaluatorIntf getMethodEvaluator() {
+		return this;
+	}
+	
 	/*******************/
 	/** Inner Classes **/
 	/*******************/
 	private class ControllerRunTask implements Runnable {
+		private Configuration _runConfig = null;
 		
 		@Override
 		public void run() {
 			OLog.info("Run Task started");
 			
-			List<Task> taskList = _mainInfo.getConfig().getProcedure("default").getTaskList();
+			/* Load the main config for faster reference */
+			_runConfig = _mainInfo.getConfig();
+			
+			List<Procedure> procList = this.loadProceduresToRun();
+			
+			/* Run each procedure in the procedure list */
+			for (Procedure procedure : procList) {
+				long procStart = System.currentTimeMillis();
+				if (this.execute(procedure) != Status.OK) {
+					OLog.err("Procedure run failed: " + procedure.toString());
+					break;
+				}
+				long procEnd = System.currentTimeMillis();
+				
+				OLog.info("Procedure \"" 
+							+ procedure.getId() 
+							+ "\" Completed at " 
+							+ Long.toString(procEnd-procStart) 
+							+ " msecs");
+			}
+			
+			/* Notify all event handlers that the MainController has finished
+			 *   executing all procedures */
+			notifyRunTaskFinished();
+			
+			return;
+		}
+		
+		private Status execute(Procedure p) {
+			Status retStatus = Status.FAILED;
+			List<Task> taskList = p.getTaskList();
 			
 			for (Task t : taskList) {
 				if (getState() == ControllerState.UNKNOWN) {
 					OLog.info("Run task terminated.");
+					retStatus = Status.OK;
 					break;
 				}
 				
@@ -621,13 +733,22 @@ public class MainController extends AbstractController {
 				/* Check first if the task is valid for execution */
 				if (checkTaskValidity(t) == false) {
 					OLog.err("Invalid task: " + t.toString());
+					retStatus = Status.FAILED;
 					break;
 				}
 				
 				/* If this is a system task, then execute it using 
 				 *   the MainController's own performCommand() method */
 				if (t.getId().startsWith("system.main")) {
-					performCommand(t.getId(), t.getParams());
+					ControllerStatus status = performCommand(t.getId(), t.getParams());
+					if (status.getLastCmdStatus() != Status.OK) {
+						OLog.err("Task failed: " + t.toString());
+						OLog.err(status.toString());
+						retStatus = Status.FAILED;
+						break;
+					}
+					retStatus = Status.OK;
+					OLog.info("Task Finished: " + t.toString());
 					continue;
 				}
 				
@@ -635,6 +756,7 @@ public class MainController extends AbstractController {
 				AbstractController controller = _mainInfo.getSubController(t.getId());
 				if (controller == null) {
 					OLog.err("Invalid task: " + t.toString());
+					retStatus = Status.FAILED;
 					break;
 				}
 				
@@ -643,16 +765,58 @@ public class MainController extends AbstractController {
 				if (status.getLastCmdStatus() != Status.OK) {
 					OLog.err("Task failed: " + t.toString());
 					OLog.err(status.toString());
+					retStatus = Status.FAILED;
 					break;
 				}
+				retStatus = Status.OK;
 				OLog.info("Task Finished: " + t.toString());
 			}
 			
-			/* Notify all event handlers that the MainController has finished
-			 *   executing all tasks */
-			notifyRunTaskFinished();
+			OLog.info("Procedure Finished: " + p.getId());
+			return retStatus;
+		}
+		
+		private List<Procedure> loadProceduresToRun() {
+			List<Procedure> procList = new ArrayList<Procedure>();
+
+			ConditionEvaluator condEval = new ConditionEvaluator();
+			condEval.setDataStore(_mainInfo.getDataStore());
+			condEval.setMethodEvaluator(getMethodEvaluator());
 			
-			return;
+			/* Load the run condition list */
+			List<TriggerCondition> conditions = _runConfig.getConditionList();
+			for (TriggerCondition t : conditions) {
+				boolean result = false;
+				
+				/* Evaluate the condition */
+				OLog.info("Condition Found: " + t.getCondition());
+				result = condEval.evaluate(t.getCondition());
+				
+				if (result == true) {
+					String procName = t.getProcedure();
+					
+					if (procName == null) {
+						OLog.warn("Procedure is null for trigger: "  
+									+ t.getId());
+						continue;
+					}
+					
+					if (procName.isEmpty()) {
+						OLog.warn("Procedure is blank for trigger: "  
+									+ t.getId());
+						continue;
+					}
+					
+					/* Add this procedure to the run list */
+					procList.add(_runConfig.getProcedure(procName));
+				}
+			}
+			
+			return procList;
+
+//			List<Procedure> procList = new ArrayList<Procedure>();
+//			procList.add(_runConfig.getProcedure("default"));
+//			return procList;
 		}
 		
 		private boolean checkTaskValidity(Task t) {

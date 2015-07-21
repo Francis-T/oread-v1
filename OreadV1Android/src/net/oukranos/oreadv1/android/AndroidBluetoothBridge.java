@@ -23,9 +23,12 @@ import android.os.Build;
 import net.oukranos.oreadv1.interfaces.BluetoothBridgeIntf;
 import net.oukranos.oreadv1.interfaces.BluetoothEventHandler;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private final String NAME_SECURE = "BluetoothSecure";
 	private final UUID MY_UUID_SECURE = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 	private final String NAME_INSECURE = "BluetoothInsecure";

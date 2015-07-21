@@ -27,9 +27,12 @@ import net.oukranos.oreadv1.types.DataStoreObject;
 import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.SendableData;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class NetworkController extends AbstractController {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private static final int MAX_QUEUE_CAPACITY = 20;
 	private static final long MAX_DESTROY_THREAD_TIMEOUT = 5000;
 	private static final int HTTP_ERROR_CODE_THRESHOLD = 300;
@@ -86,7 +89,7 @@ public class NetworkController extends AbstractController {
 	}
 
 	@Override
-	public Status initialize() {
+	public Status initialize(Object initializer) {
 		_sendTaskQueue = new LinkedList<SendableData>();
 		_queueLock = new ReentrantLock();
 
@@ -407,10 +410,10 @@ public class NetworkController extends AbstractController {
 
 		@Override
 		public void run() {
-			OLog.info("Network Controller run task started");
+//			OLog.info("Network Controller run task started");
 			while (getState() == ControllerState.READY
 					&& _sendThreadRunning == true) {
-				OLog.info("Network Controller run task loop start");
+//				OLog.info("Network Controller run task loop start");
 				try {
 					Thread.sleep(5000);
 				} catch (InterruptedException e) {
@@ -448,7 +451,7 @@ public class NetworkController extends AbstractController {
 				}
 			}
 
-			OLog.err("Network Controller run task finished");
+//			OLog.info("Network Controller run task finished");
 			return;
 		}
 	}

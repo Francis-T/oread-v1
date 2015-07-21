@@ -10,10 +10,11 @@ import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlPullParserFactory;
 
-import net.oukranos.oreadv1.types.Configuration;
-import net.oukranos.oreadv1.types.Data;
-import net.oukranos.oreadv1.types.Procedure;
 import net.oukranos.oreadv1.types.Status;
+import net.oukranos.oreadv1.types.config.Configuration;
+import net.oukranos.oreadv1.types.config.Data;
+import net.oukranos.oreadv1.types.config.Procedure;
+import net.oukranos.oreadv1.types.config.TriggerCondition;
 
 public class ConfigXmlParser {
 	
@@ -53,6 +54,7 @@ public class ConfigXmlParser {
 					processEndTag(xpp, xmpData);
 					break;
 				case XmlPullParser.TEXT:
+					processText(xpp, xmpData, config);
 					break;
 				default:
 					break;
@@ -105,6 +107,8 @@ public class ConfigXmlParser {
 		
 		if (tagName.equals("module") == true) {
 			processModuleTag(xpp, xmpData, config);
+		} else if (tagName.equals("condition") == true) {
+			processConditionTag(xpp, xmpData, config);
 		} else if (tagName.equals("procedure") == true) {
 			processProcedureTag(xpp, xmpData, config);
 		} else if (tagName.equals("data") == true) {
@@ -145,6 +149,32 @@ public class ConfigXmlParser {
 		return;
 	}
 	
+	private void processText(XmlPullParser xpp, XmlParsingMetaData xmpData, 
+			Configuration config) {
+		String text = "";
+		
+		text = xpp.getText();
+		
+		ConfigXmlElement lastElem = xmpData.getLastElement();
+		if (lastElem == null) {
+			return;
+		}
+		
+		/* Check if the last tag was a <condition> tag */
+		if (lastElem.getTag().equals("condition")) {
+			TriggerCondition condition = config.getCondition(lastElem.getId());
+			if (condition == null) {
+				return;
+			}
+			
+			/* Append text to the condition string */
+			String condText = condition.getCondition();
+			condition.setCondition(condText + text);
+		}
+		
+		return;
+	}
+	
 	private void processModuleTag(XmlPullParser xpp, XmlParsingMetaData xmpData, 
 			Configuration config) {
 		String moduleId = "";
@@ -162,6 +192,31 @@ public class ConfigXmlParser {
 		}
 		
 		config.addModule(moduleId, moduleType);
+		return;
+	}
+	
+	private void processConditionTag(XmlPullParser xpp, 
+			XmlParsingMetaData xmpData, Configuration config) {
+		String conditionId = "";
+		String conditionProc = "";
+		String conditionDesc = "";
+		
+		for (int attrIdx = 0; attrIdx < xpp.getAttributeCount(); attrIdx++) {
+			String attrName = xpp.getAttributeName(attrIdx); 
+            String attrValue = xpp.getAttributeValue(attrIdx);
+
+			if (attrName.equals("id") == true) {
+				conditionId = attrValue;
+			} else if (attrName.equals("procedure") == true) {
+				conditionProc = attrValue;
+			} else if (attrName.equals("description") == true) {
+				conditionDesc = attrValue;
+			}
+		}
+		
+		config.addCondition(conditionId, "", conditionProc, 
+				conditionDesc);
+		
 		return;
 	}
 

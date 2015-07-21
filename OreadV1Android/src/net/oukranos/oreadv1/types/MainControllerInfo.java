@@ -4,9 +4,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import net.oukranos.oreadv1.interfaces.AbstractController;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.types.config.Configuration;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class MainControllerInfo {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private List<AbstractController> _subcontrollers = null;
 	private Configuration _config = null;
 	private DataStore _dataStore = null;
@@ -27,9 +31,19 @@ public class MainControllerInfo {
 	public Object getContext() {
 		return this._context;
 	}
+	
+	public void setDataStore(DataStore dataStore) {
+		this._dataStore = dataStore;
+		return;
+	}
 
 	public DataStore getDataStore() {
 		return this._dataStore;
+	}
+	
+	public void setConfig(Configuration config) {
+		this._config = config;
+		return;
 	}
 
 	public Configuration getConfig() {

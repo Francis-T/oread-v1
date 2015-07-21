@@ -5,9 +5,12 @@ import java.util.List;
 
 import android.util.Log;
 
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class DataStore {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private List<DataStoreObject> _dataList = null;
 	
 	public DataStore() {

@@ -16,7 +16,7 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="100dp"
+        android:layout_height="10dp"
         android:layout_weight="1"
         android:orientation="horizontal"
         android:paddingRight="5dp"
@@ -315,8 +315,119 @@
             android:padding="5dp"
             android:layout_margin="2dp"
             android:background="#33666666">
+            <TextView
+                android:id="@+id/txt_zn_val"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentRight="true"
+                android:text="@string/blank_data_placeholder"
+                android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            <TextView
+                android:id="@+id/txt_zn_stab"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/txt_zn_val"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentRight="true"
+                android:text="@string/blank_data_placeholder"
+                android:textAppearance="?android:attr/textAppearanceSmall" />
+            
+            <TextView
+                android:id="@+id/txt_zn_resp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/txt_zn_stab"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentRight="true"
+                android:text="@string/blank_data_placeholder"
+                android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            <TextView
+                android:id="@+id/lbl_zn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:layout_alignParentLeft="true"
+                android:layout_below="@id/txt_zn_stab"
+                android:text="@string/lbl_zn"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
+            
         </RelativeLayout>
     </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingRight="5dp"
+        android:paddingLeft="5dp"
+        android:baselineAligned="false"
+        android:background="#ff000000" >
+
+        <RelativeLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent" 
+            android:layout_weight="1"
+            android:padding="5dp"
+            android:layout_margin="2dp"
+            android:background="#33666666">
+            
+            <TextView
+                android:id="@+id/txt_cu_val"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentTop="true"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentRight="true"
+                android:text="@string/blank_data_placeholder"
+                android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            <TextView
+                android:id="@+id/txt_cu_stab"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/txt_cu_val"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentRight="true"
+                android:text="@string/blank_data_placeholder"
+                android:textAppearance="?android:attr/textAppearanceSmall" />
+            
+            <TextView
+                android:id="@+id/txt_cu_resp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/txt_cu_stab"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentRight="true"
+                android:text="@string/blank_data_placeholder"
+                android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            <TextView
+                android:id="@+id/lbl_cu"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:layout_alignParentLeft="true"
+                android:layout_below="@id/txt_cu_stab"
+                android:text="@string/lbl_cu"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
+            
+        </RelativeLayout>
+
+        <RelativeLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent" 
+            android:layout_weight="1"
+            android:padding="5dp"
+            android:layout_margin="2dp"
+            android:background="#66666666">
+        </RelativeLayout>
+    </LinearLayout>
+
+    
     
     <LinearLayout
         android:layout_width="match_parent"
@@ -330,7 +441,21 @@
         android:layout_marginTop="2dp"
         android:layout_marginBottom="2dp"
         android:baselineAligned="false"
-        android:background="#ff111111" />
+        android:background="#ff111111" >
+
+        <TextView
+            android:id="@+id/txt_log"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+	        android:layout_marginLeft="5dp"
+	        android:layout_marginRight="5dp"
+	        android:layout_marginTop="5dp"
+	        android:layout_marginBottom="5dp"
+	        android:maxLines="9"
+	        android:scrollbars="vertical"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
+
+    </LinearLayout>
     
     <LinearLayout
         android:layout_width="match_parent"

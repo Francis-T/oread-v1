@@ -1,11 +1,13 @@
 package net.oukranos.oreadv1;
 
 import net.oukranos.oreadv1.fragments.FragmentCalibration;
+import net.oukranos.oreadv1.fragments.FragmentGuidedCalibration;
+import net.oukranos.oreadv1.fragments.FragmentLogs;
 import net.oukranos.oreadv1.fragments.FragmentReadings;
 import net.oukranos.oreadv1.interfaces.OreadServiceApi;
 import net.oukranos.oreadv1.interfaces.OreadServiceListener;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.FragmentManager;
@@ -26,8 +28,14 @@ import android.view.View.OnTouchListener;
 
 @TargetApi(Build.VERSION_CODES.HONEYCOMB)
 public class MainActivity extends Activity {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private FragmentCalibration _calibFragment = null;
 	private FragmentReadings _readFragment = null;
+	private FragmentLogs _logFragment = null;
+	private FragmentGuidedCalibration _guidedCalibFragment = null;
+	OreadFragment _currentFragment = null;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -53,10 +61,8 @@ public class MainActivity extends Activity {
 			public boolean onTouch(View v, MotionEvent event) {
 				// TODO Auto-generated method stub
 				if (gestureDetect.onTouchEvent(event)) {
-					Log.d("DEBUG", "OnTouchEvent 1");
 					return false;
 				}
-				Log.d("DEBUG", "OnTouchEvent 2");
 				return true;
 			}
 		});
@@ -115,6 +121,20 @@ public class MainActivity extends Activity {
 		FragmentTransaction ft = fm.beginTransaction();
 		
 		switch (id) {
+			case LOGGING:
+				if (_logFragment == null) {
+					_logFragment = new FragmentLogs();
+				}
+				
+				if (_logFragment.getServiceHandle() == null) {
+					_logFragment.setServiceHandle(_serviceAPI);
+				}
+				
+				ft.setCustomAnimations(R.anim.slide_in_left, R.anim.slide_out_right);
+				ft.replace(R.id.placeholder, _logFragment, "YEAAART");
+				_currentFragment = OreadFragment.LOGGING;
+				
+				break;
 			case READING:
 				if (_readFragment == null) {
 					_readFragment = new FragmentReadings();
@@ -125,7 +145,14 @@ public class MainActivity extends Activity {
 				}
 				
 				ft.setCustomAnimations(R.anim.slide_in_left, R.anim.slide_out_right);
+				if (_currentFragment == OreadFragment.CALIBRATION) {
+					ft.setCustomAnimations(R.anim.slide_in_left, R.anim.slide_out_right);
+				} else {
+					ft.setCustomAnimations(R.anim.slide_in_right, R.anim.slide_out_left);
+				}
 				ft.replace(R.id.placeholder, _readFragment, "YEAAART");
+				_currentFragment = OreadFragment.READING;
+				
 				break;
 			case CALIBRATION:
 				if (_calibFragment == null) {
@@ -135,9 +162,28 @@ public class MainActivity extends Activity {
 				if (_calibFragment.getServiceHandle() == null) {
 					_calibFragment.setServiceHandle(_serviceAPI);
 				}
+				if (_currentFragment == OreadFragment.GUIDED_CALIBRATION) {
+					ft.setCustomAnimations(R.anim.slide_in_left, R.anim.slide_out_right);
+				} else {
+					ft.setCustomAnimations(R.anim.slide_in_right, R.anim.slide_out_left);
+				}
+				ft.replace(R.id.placeholder, _calibFragment, "YEAAART");
+				_currentFragment = OreadFragment.CALIBRATION;
+				
+				break;
+			case GUIDED_CALIBRATION:
+				if (_guidedCalibFragment == null) {
+					_guidedCalibFragment = new FragmentGuidedCalibration();
+				}
+				
+				if (_guidedCalibFragment.getServiceHandle() == null) {
+					_guidedCalibFragment.setServiceHandle(_serviceAPI);
+				}
 				
 				ft.setCustomAnimations(R.anim.slide_in_right, R.anim.slide_out_left);
-				ft.replace(R.id.placeholder, _calibFragment, "YEAAART");
+				ft.replace(R.id.placeholder, _guidedCalibFragment, "YEAAART");
+				_currentFragment = OreadFragment.GUIDED_CALIBRATION;
+				
 				break;
 			default:
 				break;
@@ -152,7 +198,7 @@ public class MainActivity extends Activity {
 	/**  Private Inner Classes                                           **/
 	/**********************************************************************/
 	private class SwipeListener extends SimpleOnGestureListener {
-		private static final int THRESHOLD_SWIPE_DISTANCE = 200;
+		private static final int THRESHOLD_SWIPE_DISTANCE = 100;
 		
 		@Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
@@ -161,14 +207,20 @@ public class MainActivity extends Activity {
 			float endX = e2.getX();
 			float dist = getAbsDistance(startX, endX);
 			
-			// Leftward swipe
+			// Rightward swipe
 			if ( ( startX > endX ) && (dist > THRESHOLD_SWIPE_DISTANCE) ) {
-				loadFragment(OreadFragment.CALIBRATION);
+				OreadFragment fragId = getNextFragment(_currentFragment);
+				if (fragId != null) {
+					loadFragment(fragId);
+				}
 			}
 			
-			// Rightward swipe
+			// Leftward swipe
 			if ( ( startX < endX ) && (dist > THRESHOLD_SWIPE_DISTANCE) ) {
-				loadFragment(OreadFragment.READING);
+				OreadFragment fragId = getPrevFragment(_currentFragment);
+				if (fragId != null) {
+					loadFragment(fragId);
+				}
 			}
 			
 			
@@ -178,6 +230,36 @@ public class MainActivity extends Activity {
 		private float getAbsDistance(float x1, float x2) {
 			return (float) Math.sqrt((x1-x2)*(x1-x2));
 		}
+	}
+	
+	private OreadFragment getPrevFragment(OreadFragment current) {
+		switch (current) {
+			case READING:
+				return OreadFragment.LOGGING;
+			case CALIBRATION:
+				return OreadFragment.READING;
+			case GUIDED_CALIBRATION:
+				return OreadFragment.CALIBRATION;
+			default:
+				break;
+		}
+		
+		return OreadFragment.UNKNOWN;
+	}
+	
+	private OreadFragment getNextFragment(OreadFragment current) {
+		switch (current) {
+			case LOGGING:
+				return OreadFragment.READING;
+			case READING:
+				return OreadFragment.CALIBRATION;
+			case CALIBRATION:
+				return OreadFragment.GUIDED_CALIBRATION;
+			default:
+				break;
+		}
+		
+		return OreadFragment.UNKNOWN;
 	}
 	
 	/**********************************************************************/
@@ -300,8 +382,10 @@ public class MainActivity extends Activity {
 	
 	public enum OreadFragment {
 		UNKNOWN,
+		LOGGING,
 		READING,
-		CALIBRATION
+		CALIBRATION,
+		GUIDED_CALIBRATION
 	}
 	
 }

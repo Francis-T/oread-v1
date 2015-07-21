@@ -1,6 +1,6 @@
 package net.oukranos.oreadv1;
 
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -11,6 +11,9 @@ import android.os.SystemClock;
 import android.support.v4.content.WakefulBroadcastReceiver;
 
 public class OreadServiceWakeReceiver extends WakefulBroadcastReceiver {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	public static final String EXTRA_ORIGINATOR = "net.oukranos.oreadv1.EXTRA_ORIGINATOR";
 	public static final String EXTRA_DIRECTIVE = "net.oukranos.oreadv1.EXTRA_DIRECTIVE";
 	public static final String ORIGINATOR_ID = OreadServiceWakeReceiver.class.getName();

@@ -3,7 +3,7 @@ package net.oukranos.oreadv1.types;
 import java.io.File;
 
 import net.oukranos.oreadv1.interfaces.HttpEncodableData;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.entity.mime.MultipartEntity;
@@ -11,6 +11,8 @@ import org.apache.http.entity.mime.content.FileBody;
 import org.apache.http.entity.mime.content.StringBody;
 
 public class HttpEncChemicalPresenceData extends ChemicalPresenceData implements HttpEncodableData {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
 
 	public HttpEncChemicalPresenceData(int id) {
 		super(id);

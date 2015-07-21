@@ -6,9 +6,10 @@ import net.oukranos.oreadv1.interfaces.OreadServiceListener;
 interface OreadServiceApi {
     void start();
     void stop();
-    void runCommand(String command, String params);
+    String runCommand(String command, String params);
     OreadServiceWaterQualityData getData();
     OreadServiceControllerStatus getStatus();
+    String getLogs(int lines);
     void addListener(OreadServiceListener listener);
     void removeListener(OreadServiceListener listener);
 }

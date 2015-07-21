@@ -16,9 +16,10 @@ import net.oukranos.oreadv1.interfaces.OreadServiceListener;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.OreadServiceControllerStatus;
 import net.oukranos.oreadv1.types.WaterQualityData;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 import android.annotation.TargetApi;
+import android.app.Activity;
 import android.app.Fragment;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -26,20 +27,30 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.RemoteException;
 import android.util.Log;
+import android.view.GestureDetector;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.GestureDetector.SimpleOnGestureListener;
+import android.view.View.OnTouchListener;
 import android.widget.Button;
 import android.widget.TextView;
 
 @TargetApi(Build.VERSION_CODES.HONEYCOMB)
-public class FragmentReadings extends Fragment {	
+public class FragmentReadings extends Fragment {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private View _viewRef = null;
 	private OreadServiceApi _serviceAPI = null;
 	private HashMap<String, SensorDataGroup> _fieldMap = null;
 	private WaterQualityDataMatrix _wqdMatrix = null;
 	
 	private ReadFragmentSvcListener _listener = null;
+	private Activity _parent = null;
+	
+	private TextView _logView = null;
 	
 	public FragmentReadings() {
 		_fieldMap = new HashMap<String, FragmentReadings.SensorDataGroup>();
@@ -80,6 +91,24 @@ public class FragmentReadings extends Fragment {
 			@Override
 			public void onClick(View v) { stopService(); }}
 		);
+
+		_parent = this.getActivity();
+
+		/* Setup the double tap listener */
+		final GestureDetector gestureDetect = 
+				new GestureDetector(_parent, new DoubleTapListener());
+		
+		_logView = (TextView) _viewRef.findViewById(R.id.txt_log);
+		_logView.setOnTouchListener( new OnTouchListener() {
+			@Override
+			public boolean onTouch(View v, MotionEvent event) {
+				// TODO Auto-generated method stub
+				if (gestureDetect.onTouchEvent(event)) {
+					return false;
+				}
+				return true;
+			}
+		});
 		
 		/* Initialize the field mappings */
 		initializeFieldMap(_viewRef);
@@ -107,6 +136,30 @@ public class FragmentReadings extends Fragment {
 	  	super.onActivityCreated(savedInstanceState);
 	  	return;
   	}
+	
+	private class DoubleTapListener extends SimpleOnGestureListener {
+		@Override
+		public boolean onDoubleTapEvent(MotionEvent e) {
+			if (_parent != null) {
+				String logText = "";
+				
+				/* TODO HACKY */
+				if (_serviceAPI != null) {
+					try {
+						logText = _serviceAPI.getLogs(5);
+					} catch (RemoteException e1) {
+						e1.printStackTrace();
+					}
+				} else {
+					OLog.err("Service Unavailable");
+				}
+				
+				_logView.setText(logText);
+			}
+			return super.onDoubleTapEvent(e);
+		}
+		
+	}
 	  
 	/********************/
 	/** Public Methods **/
@@ -478,11 +531,11 @@ public class FragmentReadings extends Fragment {
 														+ " " + unitVal[i] );
 				}
 				
-				valField = _fieldMap.get(keyVal[i]).getVarianceField();
-				if (valField != null) {
-					valField.setText( Float.toString(_wqdMatrix.getVariance(i)) 
-														+ " " + unitVal[i] );
-				}
+//				valField = _fieldMap.get(keyVal[i]).getVarianceField();
+//				if (valField != null) {
+//					valField.setText( Float.toString(_wqdMatrix.getVariance(i)) 
+//														+ " " + unitVal[i] );
+//				}
 			}
 			
 			logToFile( " pH: " + Float.toString((float)data.pH) + 

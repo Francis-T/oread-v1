@@ -1,13 +1,11 @@
 package net.oukranos.oreadv1.types;
 
 import java.util.Arrays;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import net.oukranos.oreadv1.controller.BluetoothController;
 import net.oukranos.oreadv1.util.OreadLogger;
 
-public abstract class Sensor {
+public abstract class ControlMechanism {
 	/* Get an instance of the OreadLogger class to handle logging */
 	private static final OreadLogger OLog = OreadLogger.getInstance();
 	
@@ -17,16 +15,13 @@ public abstract class Sensor {
 	private byte _dataBuffer[] = new byte[512];
 	private int _dataOffset = 0;
 	private ReceiveStatus _lastReceiveStatus = ReceiveStatus.UNKNOWN;
-	private long _timeout = 2000; // TODO default
+	
+	private boolean _isBlocking = false;
+	private boolean _isStatusPollable = false;
+	private long _waitTimeout = 2000;
+	private long _pollTimeout = 2000;
 
-	/* Sensor Response Matrix */
-	protected String R_RESP_PREF  	= "";
-	protected String R_DATA_PART  	= "";
-	protected String R_RESP_DATA  	= "";
-	protected String R_RESP_OK  	= "";
-	protected String R_RESP_ERR 	= "";
-
-	public Sensor(BluetoothController bluetooth) {
+	public ControlMechanism(BluetoothController bluetooth) {
 		this._btController = bluetooth;
 	}
 
@@ -65,14 +60,55 @@ public abstract class Sensor {
 		return Status.OK;
 	}
 
-	public abstract Status read();
-	public abstract Status getInfo();
-	public abstract Status calibrate(String params);
-
+	public abstract Status activate();
+	public abstract Status activate(String params);
+	public abstract Status deactivate();
+	public abstract Status deactivate(String params);
+	public abstract Status pollStatus();
+	public boolean shouldContinuePolling() {
+		return false;
+	}
+	
 	public Status destroy() {
 		this._state = State.UNKNOWN;
 
 		return Status.OK;
+	}
+	
+	public boolean isBlocking() {
+		return this._isBlocking;
+	}
+	
+	public void setBlocking(boolean isBlocking) {
+		this._isBlocking = isBlocking;
+		return;
+	}
+	
+	public boolean isPollable() {
+		return this._isStatusPollable;
+	}
+	
+	public void setPollable(boolean isPollable) {
+		this._isStatusPollable = isPollable;
+		return;
+	}
+	
+	public long getPollDuration() {
+		return this._pollTimeout;
+	}
+	
+	public void setPollDuration(long timeout) {
+		this._pollTimeout = timeout;
+		return;
+	}
+	
+	public long getTimeoutDuration() {
+		return this._waitTimeout;
+	}
+	
+	public void setTimeoutDuration(long timeout) {
+		this._waitTimeout = timeout;
+		return;
 	}
 
 	public ReceiveStatus receiveData(byte data[], int dataLen) {
@@ -86,20 +122,29 @@ public abstract class Sensor {
 			/* TODO Should empty data be considered a failure? */
 			return (this._lastReceiveStatus = ReceiveStatus.FAILED);
 		}
+		
+		this.clearReceivedData();
+		
+		/* Set the offsets back to zero */
+		_dataOffset = 0;
 
+		OLog.info("Checking buffer lengths");
+		OLog.info("    offset  = " + Integer.toString(_dataOffset));
+		OLog.info("    datalen = " + Integer.toString(dataLen));
+		OLog.info("    max_len = " + Integer.toString(_dataBuffer.length));
 		if ((this._dataOffset + dataLen) < this._dataBuffer.length) {
 			byte readByte = 0;
 			int offset = this._dataOffset;
-			boolean isCompleteData = false;
 
+			OLog.info("Processing data...");
 			for (int i = 0; i < dataLen; i++) {
 				readByte = data[i];
 
-				/* Check if this is a terminating byte */
-				if ((readByte == '\0') || (readByte == '\r')) {
-					isCompleteData = true;
-					break;
-				}
+//				/* Check if this is a terminating byte */
+//				if ((readByte == '\0') || (readByte == '\r') || (readByte == '\n')) {
+//					isCompleteData = true;
+//					break;
+//				}
 
 				this._dataBuffer[offset] = readByte;
 
@@ -107,14 +152,13 @@ public abstract class Sensor {
 			}
 
 			this._dataOffset = offset;
-
-			if (isCompleteData) {
-				return (this._lastReceiveStatus = ReceiveStatus.COMPLETE);
-			}
-
+			OLog.info("Done processing." + "[" + new String(this._dataBuffer) + "]" +
+					  "New offset = " + Integer.toString(_dataOffset));
+		} else {
+			OLog.info("Cannot process due to invalid lengths");
 		}
 
-		return (this._lastReceiveStatus = ReceiveStatus.PARTIAL);
+		return (this._lastReceiveStatus = ReceiveStatus.COMPLETE);
 	}
 
 	public ReceiveStatus getReceiveDataStatus() {
@@ -126,63 +170,6 @@ public abstract class Sensor {
 			return null;
 		}
 		return _dataBuffer;
-	}
-
-	public Status getParsedData(WaterQualityData container) {
-		if (container == null) {
-			OLog.err("Data container is null for " + this.getName());
-			return Status.FAILED;
-		}
-
-		final byte[] data = this.getReceivedData();
-		if (data == null) {
-			OLog.err("Received data buffer is null for " + this.getName());
-			return Status.FAILED;
-		}
-		final String dataStr = new String(data).trim();
-		
-		if (dataStr.contains(R_RESP_PREF) == false) {
-			OLog.err("Parsing failed for " + this.getName() + ": Response prefix not found!");
-			return Status.FAILED;
-		}
-		
-		/* Check if we've received data */
-		if (dataStr.matches(R_RESP_PREF + R_RESP_DATA) == true) {
-			Pattern dataPattern = Pattern.compile(R_DATA_PART);
-			Matcher dataMatcher = dataPattern.matcher(dataStr);
-			
-			int matchCount = 0;
-			while(dataMatcher.find()) {
-				int startIdx = dataMatcher.start();
-				int endIdx = dataMatcher.end();
-				
-				matchCount++;
-				
-				String matchStr = dataStr.substring(startIdx, endIdx);
-				OLog.info("Found match: " + matchStr);
-				
-				/* Handle the parsed data based on the subclass implementation */
-				this.handleParsedData(container, matchCount, matchStr);
-				
-				/* Capture only up to three data matches */
-				if (matchCount == 3) {
-					break;
-				}
-			}
-		} else {
-			OLog.warn(this.getName() + " input does not match read params");
-		}
-		
-		if (dataStr.contains(R_RESP_PREF + R_RESP_OK) == true) {
-			/* TODO */
-		}
-		
-
-		if (dataStr.contains(R_RESP_PREF + R_RESP_ERR) == true) {
-			/* TODO */
-		}
-
-		return Status.OK;
 	}
 
 	public int getReceivedDataSize() {
@@ -203,18 +190,6 @@ public abstract class Sensor {
 		this._name = name;
 		return;
 	}
-	
-	public long getTimeout() {
-		return this._timeout;
-	}
-	
-	public void setTimeout(long timeout) {
-		this._timeout = timeout;
-		return;
-	}
-	
-	protected abstract void handleParsedData(WaterQualityData container, int count, String match);
-
 
 	/*************************/
 	/** Shared Enumerations **/

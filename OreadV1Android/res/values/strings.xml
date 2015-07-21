@@ -13,6 +13,9 @@
     <string name="lbl_cond">Cond</string>
     <string name="lbl_temp">Temp</string>
     <string name="lbl_turb">Turb</string>
+    <string name="lbl_cu">Cu</string>
+    <string name="lbl_zn">Zn</string>
+    <string name="lbl_log_frag">Recent Logs</string>
     <string-array name="calib_modes">
         <item> </item>
         <item>pH  - clear calibration</item>
@@ -29,5 +32,7 @@
         <item>EC  - high calibration</item>
         <item>TEMP - manual calibration</item>
     </string-array>
+    
+    <string name="lbl_guided_calib">Guided Calibration</string>
 
 </resources>

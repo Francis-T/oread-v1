@@ -9,9 +9,12 @@ import android.telephony.TelephonyManager;
 import net.oukranos.oreadv1.interfaces.ConnectivityBridgeIntf;
 import net.oukranos.oreadv1.interfaces.DeviceIdentityIntf;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class AndroidConnectivityBridge implements DeviceIdentityIntf, ConnectivityBridgeIntf {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private static AndroidConnectivityBridge _androidConnectivityBridge = null;
 	private ConnectivityManager _connMgr = null;
 	private TelephonyManager _phoneMgr = null;

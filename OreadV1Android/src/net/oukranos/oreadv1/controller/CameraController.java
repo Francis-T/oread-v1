@@ -10,9 +10,12 @@ import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.DataStore;
 import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class CameraController extends AbstractController implements CameraControlEventHandler {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private static final long MAX_AWAIT_CAMERA_RESPONSE_TIMEOUT = 5000;
 	private static CameraController _cameraController = null;
 	private MainControllerInfo _mainInfo = null;
@@ -57,7 +60,7 @@ public class CameraController extends AbstractController implements CameraContro
 	/** AbstractController Methods **/
 	/********************************/
 	@Override
-	public Status initialize() {
+	public Status initialize(Object initializer) {
 		if ( (this.getState() != ControllerState.INACTIVE) &&
 			   (this.getState() != ControllerState.UNKNOWN) ) {
 			OLog.warn("CameraController already started");

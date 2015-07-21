@@ -10,14 +10,17 @@ import net.oukranos.oreadv1.interfaces.DeviceIdentityIntf;
 import net.oukranos.oreadv1.interfaces.HttpEncodableData;
 import net.oukranos.oreadv1.interfaces.InternetBridgeIntf;
 import net.oukranos.oreadv1.manager.FilesystemManager.FSMan;
-import net.oukranos.oreadv1.types.Configuration;
-import net.oukranos.oreadv1.types.Data;
 import net.oukranos.oreadv1.types.SendableData;
 import net.oukranos.oreadv1.types.Status;
+import net.oukranos.oreadv1.types.config.Configuration;
+import net.oukranos.oreadv1.types.config.Data;
 import net.oukranos.oreadv1.util.ConfigXmlParser;
-import net.oukranos.oreadv1.util.OLog;
+import net.oukranos.oreadv1.util.OreadLogger;
 
 public class ConfigManager {
+	/* Get an instance of the OreadLogger class to handle logging */
+	private static final OreadLogger OLog = OreadLogger.getInstance();
+	
 	private static final String DEFAULT_CFG_FILE_PATH = FSMan.getDefaultFilePath();
 	private static final String DEFAULT_CFG_FILE_NAME = "oread_config.xml";
 	private static final String DEFAULT_CFG_FILE_TEMP_NAME = "oread_config_temp.xml";
@@ -318,6 +321,7 @@ public class ConfigManager {
 		/* Save the base url to the device config url */
 		deviceConfigUrl = url_base + "/" + this.getDeviceConfigUrlId(context);
 
+		OLog.info("ConfigUrl: " + deviceConfigUrl);
 		/* OPTIONAL: Obtain the device id url from the config file.
 		 * 	By default, the device will attempt to obtain a unique ID based
 		 *  on its IMEI to use as its device id URL - the case below is 
@@ -338,6 +342,7 @@ public class ConfigManager {
 		
 		/* Override the device id url based on the phone's IMEI */
 		deviceConfigUrl = url_base + "/" + url_device_id;
+		OLog.info("ConfigUrl: " + deviceConfigUrl);
 		
 		return deviceConfigUrl;
 	}
