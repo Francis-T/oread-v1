@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <configuration id="oread-config"
                version="1.4"
-               creation-date="1430780188000">
+               creation-date="9430780188000">
     <module-list>
         <module id="main" type="system"/>
         <module id="bluetooth" type="comm"/>
@@ -16,6 +16,21 @@
         </condition>
     </condition-list>
     <procedure-list>
+        <procedure id="diagnostics">
+            <task id="comm.network.start" params=""/>
+            <task id="comm.bluetooth.start" params=""/>
+            <task id="comm.bluetooth.connectByName" params="HC-05"/>
+            <task id="sensors.water_quality.start" params=""/>
+            <task id="device.fd_control.start" params=""/>
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="1000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+            <task id="device.fd_control.startSolutionDispense" params=""/>
+            <task id="device.fd_control.stopSolutionDispense" params=""/>
+            <task id="system.main.wait" params="1000"/>
+            <task id="device.fd_control.startPump" params=""/>
+            <task id="device.fd_control.stopPump" params=""/>
+        </procedure>
         <procedure id="default">
             <task id="comm.network.start" params=""/>
             <task id="comm.bluetooth.start" params=""/>
@@ -25,41 +40,98 @@
             <task id="device.fd_control.openValve" params=""/>
             <task id="system.main.wait" params="10000"/>
             <task id="device.fd_control.closeValve" params=""/>
-            <task id="device.fd_control.startSolutionDispense" params=""/>>
+            <task id="device.fd_control.startSolutionDispense" params=""/>
             <task id="device.fd_control.stopSolutionDispense" params=""/>
+            <task id="system.main.wait" params="2000"/>
+            <!-- Clear sensor calibration -->
+            <!--
+            <task id="sensors.water_quality.calibratePH" params="clear"/>
+            <task id="sensors.water_quality.calibrateDO" params="clear"/>
+            <task id="sensors.water_quality.calibrateEC" params="clear"/>
+            <task id="system.main.wait" params="2000"/>
+            -->
+            <!-- Dry/Air calibration for EC + DO2 -->
+            <!--
+            <task id="sensors.water_quality.calibrateEC" params="dry"/>
+            <task id="system.main.wait" params="2000"/>
+            <task id="sensors.water_quality.calibrateDO" params=" "/>
+            <task id="system.main.wait" params="300000"/>
+            -->
+            <!-- Low-point calibration for EC, DO2, pH -->
+            <!--
+            <task id="sensors.water_quality.calibratePH" params="mid,7.2"/>
+            <task id="sensors.water_quality.calibrateDO" params="0"/>
+            <task id="sensors.water_quality.calibrateEC" params="one,27200"/>
+            <task id="system.main.wait" params="2000"/>
+            -->
+            <!-- Drain calibration solution -->
+            
             <task id="device.fd_control.openValve" params=""/>
-            <task id="system.main.wait" params="10000"/>
+            <task id="system.main.wait" params="20000"/>
             <task id="device.fd_control.closeValve" params=""/>
+            
+            <!-- Fill reservoir with sample water -->
             <task id="device.fd_control.startPump" params=""/>
             <task id="device.fd_control.stopPump" params=""/>
-            <task id="system.main.wait" params="10000"/>
+            <!-- Wait for parameters to settle -->
+            <task id="system.main.wait" params="30000"/>
             <task id="system.main.clearData" params=""/>
-            <task id="system.main.clearImage" params=""/>
+            <!-- Take measurements -->
             <task id="sensors.water_quality.readPH" params=""/>
+            <task id="system.main.wait" params="2000"/>
+            <task id="sensors.water_quality.readPH" params=""/>
+            <task id="system.main.wait" params="2000"/>
             <task id="sensors.water_quality.readDO" params=""/>
+            <task id="system.main.wait" params="2000"/>
+            <task id="sensors.water_quality.readDO" params=""/>
+            <task id="system.main.wait" params="2000"/>
             <task id="sensors.water_quality.readEC" params=""/>
+            <task id="system.main.wait" params="2000"/>
+            <task id="sensors.water_quality.readEC" params=""/>
+            <task id="system.main.wait" params="2000"/>
             <task id="sensors.water_quality.readTM" params=""/>
+            <task id="system.main.wait" params="2000"/>
+            <task id="sensors.water_quality.readTM" params=""/>
+            <task id="system.main.wait" params="2000"/>
             <task id="sensors.water_quality.readTU" params=""/>
+            <task id="system.main.wait" params="2000"/>
+            <task id="sensors.water_quality.readTU" params=""/>
+            <task id="system.main.wait" params="2000"/>
             <task id="system.main.receiveData" params=""/>
             <task id="system.main.processData" params=""/>
+            <!-- Upload water quality data -->
             <task id="comm.network.uploadDataNew" params="live_data_url,sendable_data_site"/>
-            <!--task id="device.fd_control.startAutosampler" params=""/-->
+            <!-- Start As-Hg autosampler -->
+            <task id="device.fd_control.startAutosampler" params="@"/>
+            <!-- Capture image -->
+            <task id="system.main.wait" params="60000"/>
             <task id="sensors.hg_as_detection.read" params=""/>
             <task id="system.main.wait" params="5000"/>
             <task id="system.main.processImage" params=""/>
             <task id="system.main.wait" params="2000"/>
-            <!--task id="device.fd_control.stopAutosampler" params=""/-->
+            <!-- Upload image capture -->
+            <task id="comm.network.uploadDataNew" params="live_image_url,sendable_image_site"/>
+            <!-- Stop autosampler -->
+            <task id="device.fd_control.stopAutosampler" params=""/>
+            <!-- Poll Cu-Zn Autosampler and until data available-->
+            <task id="device.fd_control.readFromCuZnAutosampler" params="x"/>
+            <task id="system.main.wait" params="5000"/>
+            <task id="device.fd_control.stopCuZnAutosampler" params=""/>
             <task id="device.fd_control.openValve" params=""/>
             <task id="system.main.wait" params="10000"/>
             <task id="device.fd_control.closeValve" params=""/>
             <task id="comm.network.uploadDataNew" params="live_image_url,sendable_image_site"/>
             <task id="system.main.wait" params="30000"/>
+            <!-- Drain reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="10000"/>
+            <task id="device.fd_control.closeValve" params=""/>
         </procedure>
     </procedure-list>
     <data-list>
         <data id="live_data_url" type="string" value="http://miningsensors.info/api"/>
         <data id="live_image_url" type="string" value="http://miningsensors.info/photoupload"/>
-       <data id="custom_sleep_interval" type="long" value="120000"/>
+       <data id="custom_sleep_interval" type="long" value="90000"/>
     </data-list>
 </configuration>
 

@@ -86,8 +86,8 @@ public class SiteDeviceImage implements JsonEncodableData, HttpEncodableData {
 	}
 
 	@Override
-	public String encodeToJsonString() {
-		JSONObject request = encodeToJson();
+	public String encodeToJson() {
+		JSONObject request = encodeToJsonObject();
 		if (request == null) {
 			return "";
 		}
@@ -96,7 +96,7 @@ public class SiteDeviceImage implements JsonEncodableData, HttpEncodableData {
 	}
 
 	@Override
-	public JSONObject encodeToJson() {
+	public JSONObject encodeToJsonObject() {
 		JSONObject request = new JSONObject();
 		
 		try {
@@ -125,7 +125,7 @@ public class SiteDeviceImage implements JsonEncodableData, HttpEncodableData {
 
 	@Override
 	public HttpEntity encodeDataToHttpEntity() {
-		JSONObject request  = encodeToJson();
+		JSONObject request  = encodeToJsonObject();
 		
 		if (request == null) {
 			OLog.err("Failed to get HttpDataEntity");
@@ -150,16 +150,26 @@ public class SiteDeviceImage implements JsonEncodableData, HttpEncodableData {
 				return null;
 			}
 			
+			
+			String dateRecordedStr 	= Long.toString(reportData.getLong("dateRecorded"));
+			String readingOfStr 	= reportData.getString("readingOf");
+			String unitsStr 		= reportData.getString("units");
+			String valueStr 		= Double.toString(reportData.getDouble("value"));
+			String errMsgStr		= reportData.getString("errMsg");
+			
 			/* Extract the strings from the JSON object and apply them as separate "String"
 			 *   bodies to the MultipartHttpEntity */
-			e.addPart("dateRecorded", new StringBody((String) Long.toString((Long) reportData.get("dateRecorded")) ));
-			e.addPart("readingOf",    new StringBody((String) reportData.get("readingOf")));
-			e.addPart("units",        new StringBody((String) reportData.get("units")));
-			e.addPart("value",        new StringBody((String) Double.toString((Double)reportData.get("value"))) );
-			e.addPart("errMsg",       new StringBody((String) reportData.get("errMsg")));
+			e.addPart("sitedevice_id", 	new StringBody(_siteDeviceId));
+			e.addPart("context", 		new StringBody(_context)); 
+			e.addPart("dateRecorded",  	new StringBody(dateRecordedStr));
+			e.addPart("readingOf",     	new StringBody(readingOfStr));
+			e.addPart("units",         	new StringBody(unitsStr));
+			e.addPart("value",      	new StringBody(valueStr));
+			e.addPart("errMsg",       	new StringBody(errMsgStr));
 			
 			/* Finally, add the captured file */
-	        FileBody isb = new FileBody(new File(getCaptureFilePath() + "/" + getCaptureFileName()));                                                        
+	        FileBody isb = new FileBody(new File(getCaptureFilePath() + "/" + getCaptureFileName()), "image/jpeg");
+	        OLog.info("File Info:     MIME-Type: " + isb.getMimeType() + " Media-Type: " + isb.getMediaType());
 	        e.addPart("photo", isb);
 	        
 		} catch (Exception e1) {

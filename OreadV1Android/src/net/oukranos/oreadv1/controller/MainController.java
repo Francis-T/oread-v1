@@ -3,11 +3,14 @@ package net.oukranos.oreadv1.controller;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.Random;
 
 import android.content.Context;
+import net.oukranos.oreadv1.android.AndroidStoredDataBridge;
 import net.oukranos.oreadv1.interfaces.AbstractController;
 import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
 import net.oukranos.oreadv1.interfaces.MethodEvaluatorIntf;
+import net.oukranos.oreadv1.types.CachedReportData;
 import net.oukranos.oreadv1.types.ChemicalPresenceData;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.ControllerStatus;
@@ -39,11 +42,7 @@ public class MainController extends AbstractController implements MethodEvaluato
 	private Runnable _controllerRunTask = null;
 
 	private WaterQualityData _waterQualityData = null;
-	@SuppressWarnings("unused")
-	private boolean _waterQualityDataAvailable = false;
 	private ChemicalPresenceData _chemPresenceData = null;
-	@SuppressWarnings("unused")
-	private boolean _chemPresenceDataAvailable = false;
 	private SiteDeviceData _siteDeviceData = null;
 	private SiteDeviceImage _siteDeviceImage = null;
 	
@@ -52,9 +51,13 @@ public class MainController extends AbstractController implements MethodEvaluato
 	private CameraController _cameraController = null;
 	private NetworkController _networkController = null;
 	private AutomationController _deviceController = null;
+	private DatabaseController _databaseController = null;
 
 	private MainControllerInfo _mainInfo = null;
 	private List<MainControllerEventHandler> _eventHandlers = null;
+	
+	private long _procStart = 0;
+	private long _procEnd = 0; 
 
 	/*************************/
 	/** Initializer Methods **/
@@ -266,6 +269,23 @@ public class MainController extends AbstractController implements MethodEvaluato
 			
 			controller.performCommand(taskCmdStr, taskParamStr);
 			
+		} else if (shortCmdStr.equals("waitUntilTimeSinceStarted")) {
+			long elapsedTimeSinceStart = System.currentTimeMillis() - _procStart;
+			long sleepTime = Long.valueOf(paramStr) - elapsedTimeSinceStart;
+			if (sleepTime < 0) {
+				sleepTime = 0;
+			}
+			
+			OLog.info("Sleeping for " + sleepTime + " ms...");
+			try {
+				Thread.sleep(sleepTime);
+			} catch (Exception e) {
+				OLog.warn("Something went wrong.");
+				e.printStackTrace();
+			}
+			long stopTime = System.currentTimeMillis();
+			OLog.info("Thread woke up " + (stopTime-elapsedTimeSinceStart) + "ms later." );
+			this.writeInfo("Command Performed: Wait for " + sleepTime + "ms");
 		} else if (shortCmdStr.equals("wait")) {
 			long sleepTime = Long.valueOf(paramStr);
 			long startTime = System.currentTimeMillis();
@@ -295,6 +315,29 @@ public class MainController extends AbstractController implements MethodEvaluato
 			for (MainControllerEventHandler e : _eventHandlers) {
 				e.onDataAvailable();
 			}
+		} else if (shortCmdStr.equals("processMultipleCachedData")) {
+			processMultipleCachedData();
+			this.writeInfo("Command Performed: Sent Cached Data to Server");
+		} else if (shortCmdStr.equals("processCachedImage")) {
+			processCachedImage();
+			this.writeInfo("Command Performed: Sent Cached Image to Server");
+
+		/** XXX ********************** XXX **/
+		/** XXX BEGIN Testing Commands XXX **/
+		/** XXX ********************** XXX **/
+		} else if (shortCmdStr.equals("generateWaterQualityData")) {
+			generateWaterQualityData();
+			this.writeInfo("Command Performed: Read* Water Quality Data");
+		} else if (shortCmdStr.equals("processCachedData")) {
+			processCachedReportData();
+			this.writeInfo("Command Performed: Process* Water Quality Data");
+		} else if (shortCmdStr.equals("updateCachedData")) {
+			updateCachedReportData();
+			this.writeInfo("Command Performed: Updated Cached Data");
+		/** XXX ******************** XXX **/
+		/** XXX END Testing Commands XXX **/
+		/** XXX ******************** XXX **/
+			
 		} else {
 			this.writeErr("Unknown or invalid command: " + shortCmdStr);
 		}
@@ -330,6 +373,34 @@ public class MainController extends AbstractController implements MethodEvaluato
 			Integer minute = c.get(Calendar.MINUTE);
 			
 			return DataStoreObject.createNewInstance("getCurrentMinute", "integer", minute);
+		} else if (methodName.equals("isWaterQualityDataAvailable()")) {
+			String result = null;
+			AndroidStoredDataBridge pDataStore 
+				= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
+			if (pDataStore != null) {
+				result = pDataStore.get("WQ_DATA_AVAILABLE");
+			}
+			
+			/* Default to false */
+			if (result == null) {
+				result = "false";
+			}
+			
+			return DataStoreObject.createNewInstance("isWaterQualityDataAvailable", "string", result);
+		} else if (methodName.equals("isImageCaptureAvailable()")) {
+			String result = null;
+			AndroidStoredDataBridge pDataStore 
+				= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
+			if (pDataStore != null) {
+				result = pDataStore.get("IMG_CAPTURE_AVAILABLE");
+			}
+			
+			/* Default to false */
+			if (result == null) {
+				result = "false";
+			}
+			
+			return DataStoreObject.createNewInstance("isWaterQualityDataAvailable", "string", result);
 		}
 		
 		
@@ -500,18 +571,21 @@ public class MainController extends AbstractController implements MethodEvaluato
 		
 		return Status.OK;
 	}
+	private CachedReportData _reportDataTemp = null;
 	
 	private Status initializeSubControllers() {
 		/* Initialize data buffers */
 		_chemPresenceData = new ChemicalPresenceData(1);
 		_waterQualityData = new WaterQualityData(1);
+		_reportDataTemp = new CachedReportData();
 		_siteDeviceData = new SiteDeviceData("DV862808028030255", "test");
 		_siteDeviceImage = new SiteDeviceImage("DV862808028030255", "test", "", "");
 		
 		this._mainInfo.getDataStore().add("hg_as_detection_data", "ChemicalPresenceData", _chemPresenceData);
 		this._mainInfo.getDataStore().add("h2o_quality_data", "WaterQualityData", _waterQualityData);
-		this._mainInfo.getDataStore().add("sendable_data_site", "SiteDeviceData", _siteDeviceData);
-		this._mainInfo.getDataStore().add("sendable_image_site", "SiteDeviceImage", _siteDeviceImage);
+		this._mainInfo.getDataStore().add("report_data_temp", "ReportDataTemp", _reportDataTemp);
+		this._mainInfo.getDataStore().add("site_device_data", "SiteDeviceData", _siteDeviceData);
+		this._mainInfo.getDataStore().add("site_device_image", "SiteDeviceImage", _siteDeviceImage);
 		
 		/* Initialize all sub-controllers here */
 		_bluetoothController = BluetoothController.getInstance(this._mainInfo);
@@ -529,44 +603,60 @@ public class MainController extends AbstractController implements MethodEvaluato
 		_deviceController = AutomationController.getInstance(this._mainInfo);
 		this._mainInfo.addSubController(_deviceController);
 		
+		_databaseController = DatabaseController.getInstance(this._mainInfo);
+		this._mainInfo.addSubController(_databaseController);
+		
 		_bluetoothController.initialize(null);
 		_networkController.initialize(null);
 		_cameraController.initialize(null);
 		_sensorArrayController.initialize(null);
 		_deviceController.initialize(null);
+		_databaseController.initialize(null);
 		
 		return Status.OK;
 	}
 	
 	private Status unloadSubControllers() {
 		/* Cleanup sub-controllers */
+		if (_databaseController != null) {
+			_databaseController.destroy();
+			_databaseController = null;
+		}
+		
 		if ( _deviceController != null ) {
 			_deviceController.destroy();
+			_deviceController = null;
 		}
 		
 		if ( _sensorArrayController != null ) {
 			_sensorArrayController.destroy();
+			_sensorArrayController = null;
 		}
 
 		if ( _cameraController != null ) {
 			_cameraController.destroy();
+			_cameraController = null;
 		}
 
 		if ( _networkController != null ) {
 			_networkController.destroy();
+			_networkController = null;
 		}
 		
 		if (_bluetoothController != null) {
 			_bluetoothController.destroy();
+			_bluetoothController = null;
 		}
 
 		/* Cleanup data buffers */
 		_waterQualityData = null;
 		_chemPresenceData = null;
+		
 		this._mainInfo.getDataStore().remove("h2o_quality_data");
 		this._mainInfo.getDataStore().remove("hg_as_detection_data");
-		this._mainInfo.getDataStore().remove("sendable_data_site");
-		this._mainInfo.getDataStore().remove("sendable_image_site");
+		this._mainInfo.getDataStore().remove("report_data_temp");
+		this._mainInfo.getDataStore().remove("site_device_data");
+		this._mainInfo.getDataStore().remove("site_device_image");
 		this._mainInfo.getDataStore().remove("live_data_url");
 		
 		return Status.OK;
@@ -634,32 +724,300 @@ public class MainController extends AbstractController implements MethodEvaluato
 	private void processImageData(ChemicalPresenceData d) {
 		_siteDeviceImage.setCaptureFile(d.getCaptureFileName(), d.getCaptureFilePath());
 		_siteDeviceImage.addReportData(new SiteDeviceReportData("photo", "", 0f, ""));
+
+		/* Add persistent data flag for unsent image capture availability */
+		AndroidStoredDataBridge pDataStore 
+			= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
+		if (pDataStore == null) {
+			return;
+		}
+		pDataStore.put("IMG_CAPTURE_AVAILABLE", "true");
 		
 		return;
 	}
 	
 	private void processWaterQualityData(WaterQualityData d) {
+		/* Get the stored SiteDeviceData object */
+		SiteDeviceData siteData = 
+				(SiteDeviceData) getStoredObject("site_device_data");
+		if (siteData == null) {
+			writeErr("SiteDeviceData object not found");
+			return;
+		}
 		
-		_siteDeviceData.addReportData(new SiteDeviceReportData("pH", "", (float)(d.pH), "OK"));
-		_siteDeviceData.addReportData(new SiteDeviceReportData("DO2", "mg/L", (float)(d.dissolved_oxygen), "OK"));
-		_siteDeviceData.addReportData(new SiteDeviceReportData("Conductivity", "uS/cm", (float)(d.conductivity), "OK"));
-		_siteDeviceData.addReportData(new SiteDeviceReportData("Temperature", "deg C", (float)(d.temperature), "OK"));
-		_siteDeviceData.addReportData(new SiteDeviceReportData("Turbidity", "NTU", (float)(d.turbidity), "OK"));
+		/* TODO Validate the water quality parameters */
+		
+		/* Add the water quality parameters as report data */
+		SiteDeviceReportData repData;
+		
+		repData = new SiteDeviceReportData("pH", "", 
+				(float)(d.pH), "OK");
+		siteData.addReportData(repData);
+		
+		repData = new SiteDeviceReportData("DO2", "mg/L", 
+				(float)(d.dissolved_oxygen), "OK");
+		siteData.addReportData(repData);
+		
+		repData = new SiteDeviceReportData("Conductivity", "uS/cm", 
+				(float)(d.conductivity), "OK");
+		siteData.addReportData(repData);
+		
+		repData = new SiteDeviceReportData("Temperature", "deg C", 
+				(float)(d.temperature), "OK");
+		siteData.addReportData(repData);
+		
+		repData = new SiteDeviceReportData("Turbidity", "NTU", 
+				(float)(d.turbidity), "OK");
+		siteData.addReportData(repData);
+		
+		/* Add persistent data flag for unsent water quality data availability */
+		AndroidStoredDataBridge pDataStore 
+			= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
+		if (pDataStore == null) {
+			return;
+		}
+		pDataStore.put("WQ_DATA_AVAILABLE", "true");
 		
 		return;
 	}
 	
 	private void clearWaterQualityData() {
-		_siteDeviceData.clearReportData();
+		/* Get the stored SiteDeviceData object */
+		SiteDeviceData siteData = 
+				(SiteDeviceData) getStoredObject("site_device_data");
+		if (siteData == null) {
+			writeErr("SiteDeviceData object not found");
+			return;
+		}
+		
+		/* Clear all report data in the SiteDeviceData object */
+		siteData.clearReportData();
 		
 		return;
 	}
 	
 	private void clearImageData() {
-		_siteDeviceImage.clearReportData();
+		/* Get the stored SiteDeviceData object */
+		SiteDeviceImage siteImage = 
+				(SiteDeviceImage) getStoredObject("site_device_image");
+		if (siteImage == null) {
+			writeErr("SiteDeviceImage object not found");
+			return;
+		}
+		
+		/* Clear all report data in the SiteDeviceImage object */
+		siteImage.clearReportData();
 		
 		return;
 	}
+	
+	private void processMultipleCachedData() {
+		int recIdList[] = new int[10];
+
+		/* Get the stored SiteDeviceData object */
+		SiteDeviceData siteData = 
+				(SiteDeviceData) getStoredObject("site_device_data");
+		if (siteData == null) {
+			writeErr("SiteDeviceData object not found");
+			return;
+		}
+
+		/* Start querying the database */
+		if (_databaseController.startQuery("h2o_quality") != Status.OK) {
+			return;
+		}
+		
+		/* Fetch data into temporary storage */
+		CachedReportData crDataTemp = null;
+		for (int i = 0; i < 10; i++) {
+			
+			/* Fetch the cached report data */
+			crDataTemp = new CachedReportData();
+			Status status = _databaseController.fetchReportData(crDataTemp);
+			if (status != Status.OK) {
+				writeWarn("No more report data found");
+				break;
+			}
+			
+			/* Create the report data part from the cached report data */
+			SiteDeviceReportData reportDataTemp 
+				= new SiteDeviceReportData("", "", 0.0f, "");
+			status 
+				= reportDataTemp.decodeFromJson(crDataTemp.getData());
+			if (status != Status.OK) {
+				break;
+			}
+			
+			/* Add the report data part to the site device data */
+			siteData.addReportData(reportDataTemp);
+			
+			/* Add the record id to the list of records to be updated upon 
+			 *  successful sending */ 
+			recIdList[i] = crDataTemp.getId();
+		}
+		
+		/* Stop querying the database */
+		if (_databaseController.stopQuery() != Status.OK) {
+			return;
+		}
+		
+		/* TODO Do something with the accumulated report data (e.g. send to the server) */
+		OLog.info("Sending data to server: \n" + siteData.encodeToJson());
+		
+		/* If successfully sent to the server, update the records */
+		for (Integer recId : recIdList) {
+			_databaseController.updateRecord(recId.toString(), true);
+		}
+		
+		/* Check the database if more unsent data remains;
+		 * 	otherwise, update the persistent data flag to "false" */
+		if (_databaseController.hasUnsentRecords("h2o_quality") == false) {		
+			/* Add persistent data flag for unsent water quality data availability */
+			AndroidStoredDataBridge pDataStore 
+				= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
+			if (pDataStore == null) {
+				return;
+			}
+			pDataStore.put("WQ_DATA_AVAILABLE", "false");
+		}
+		
+		writeInfo("Finished sending report data to server.");
+		return;
+	}
+	
+	private void processCachedImage() {
+		/* Get the stored SiteDeviceData object */
+		SiteDeviceImage siteImage = 
+				(SiteDeviceImage) getStoredObject("site_device_image");
+		if (siteImage == null) {
+			writeErr("SiteDeviceImage object not found");
+			return;
+		}
+
+		/* Start querying the database */
+		if (_databaseController.startQuery("image") != Status.OK) {
+			return;
+		}
+		
+		/* Fetch the cached report data into temporary storage */
+		CachedReportData crDataTemp = new CachedReportData();
+		Status status = _databaseController.fetchReportData(crDataTemp);
+		if (status != Status.OK) {
+			writeWarn("No more report data found");
+			return;
+		}
+		
+		/* Stop querying the database */
+		if (_databaseController.stopQuery() != Status.OK) {
+			return;
+		}
+		
+		/* Extract the file meta data from the cached report data */
+		/*  For convenience, this is stored in the 'data' field as
+		 * 	a comma-delimited string.
+		 * 
+		 *  TODO: Filepaths MAY have commas too, so we need to
+		 *  	  add workarounds for those cases */
+		String fileMetaData[] = crDataTemp.getData().split(",");
+		if (fileMetaData.length != 2) {
+			writeErr("Invalid file metadata: " + crDataTemp.getData());
+			return;
+		}
+		
+		/* Write the report data */
+		siteImage.setCaptureFile(fileMetaData[0], fileMetaData[1]);
+		siteImage.addReportData(new SiteDeviceReportData("photo", "", 0f, ""));
+		
+		/* TODO Do something with the accumulated report data (e.g. send to the server) */
+		OLog.info("Sending image to server");
+		
+		/* If successfully sent to the server, update the records */
+		String recId = Integer.toString(crDataTemp.getId());
+		_databaseController.updateRecord(recId, true);
+		
+		/* Check the database if more unsent data remains;
+		 * 	otherwise, update the persistent data flag to "false" */
+		if (_databaseController.hasUnsentRecords("image") == false) {		
+			/* Add persistent data flag for unsent water quality data availability */
+			AndroidStoredDataBridge pDataStore 
+				= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
+			if (pDataStore == null) {
+				return;
+			}
+			pDataStore.put("IMG_CAPTURE_AVAILABLE", "false");
+		}
+		
+		writeInfo("Finished sending image to server.");
+		return;
+	}
+	
+	private Object getStoredObject(String dataId) {
+		DataStore dataStore = _mainInfo.getDataStore();
+		if (dataStore == null) {
+			writeErr("MainController DataStore unavailable");
+			return null;
+		}
+		
+		DataStoreObject dataObj = dataStore.retrieve(dataId);
+		if (dataObj == null) {
+			writeErr("DataStoreObject could not be retrieved");
+			return null;
+		}
+		
+		Object obj = dataObj.getObject();
+		if (obj == null) {
+			writeErr("Object could not be retrieved");
+			return null;
+		}
+		
+		return obj;
+	}
+
+	/** XXX ****************************** XXX **/
+	/** XXX BEGIN: Testing Command Methods XXX **/
+	/** XXX ****************************** XXX **/
+	private void generateWaterQualityData() {
+		_waterQualityData.pH = 7.00f + new Random().nextFloat();
+		_waterQualityData.dissolved_oxygen = 9.08f + new Random().nextFloat();
+		_waterQualityData.conductivity = 100.0f + new Random().nextFloat();
+		_waterQualityData.temperature = 27.6f + new Random().nextFloat();
+		_waterQualityData.turbidity = 0.0f + new Random().nextFloat();
+		
+		return;
+	}
+	
+	private void processCachedReportData() {
+		OLog.info("CachedData: " + _reportDataTemp.toString());
+		
+		DataStore ds = _mainInfo.getDataStore();
+		if (ds.retrieve("lastProcessedCachedRecordId") != null) {
+			ds.remove("lastProcessedCachedRecordId");
+		}
+
+		ds.add("lastProcessedCachedRecordId", "int", _reportDataTemp.getId());
+		
+		return;
+	}
+	
+	private void updateCachedReportData() {
+		DataStore ds = _mainInfo.getDataStore();
+		
+		Object obj = ds.retrieveObject("lastProcessedCachedRecordId");
+		if (obj == null) {
+			writeErr("No cached records have been processed yet");
+			return;
+		}
+		
+		Integer recId = (Integer) obj;
+		_databaseController.updateRecord(recId.toString(), true);
+		
+		return;
+		
+	}
+	/** XXX **************************** XXX **/
+	/** XXX END: Testing Command Methods XXX **/
+	/** XXX **************************** XXX **/
+	
 	
 	private void notifyRunTaskFinished() {
 		if (_eventHandlers == null) {
@@ -693,19 +1051,22 @@ public class MainController extends AbstractController implements MethodEvaluato
 			
 			List<Procedure> procList = this.loadProceduresToRun();
 			
+			_procStart = 0;
+			_procEnd = 0;
+			
 			/* Run each procedure in the procedure list */
 			for (Procedure procedure : procList) {
-				long procStart = System.currentTimeMillis();
+				_procStart = System.currentTimeMillis();
 				if (this.execute(procedure) != Status.OK) {
 					OLog.err("Procedure run failed: " + procedure.toString());
 					break;
 				}
-				long procEnd = System.currentTimeMillis();
+				_procEnd = System.currentTimeMillis();
 				
 				OLog.info("Procedure \"" 
 							+ procedure.getId() 
 							+ "\" Completed at " 
-							+ Long.toString(procEnd-procStart) 
+							+ Long.toString(_procEnd-_procStart) 
 							+ " msecs");
 			}
 			
@@ -740,15 +1101,22 @@ public class MainController extends AbstractController implements MethodEvaluato
 				/* If this is a system task, then execute it using 
 				 *   the MainController's own performCommand() method */
 				if (t.getId().startsWith("system.main")) {
-					ControllerStatus status = performCommand(t.getId(), t.getParams());
-					if (status.getLastCmdStatus() != Status.OK) {
+					try {
+						ControllerStatus status = performCommand(t.getId(), t.getParams());
+						if (status.getLastCmdStatus() != Status.OK) {
+							OLog.err("Task failed: " + t.toString());
+							OLog.err(status.toString());
+							retStatus = Status.FAILED;
+							break;
+						}
+						retStatus = Status.OK;
+						OLog.info("Task Finished: " + t.toString());
+					} catch (Exception e) {
 						OLog.err("Task failed: " + t.toString());
-						OLog.err(status.toString());
+						OLog.err("Exception ocurred: " + e.getMessage() );
 						retStatus = Status.FAILED;
 						break;
 					}
-					retStatus = Status.OK;
-					OLog.info("Task Finished: " + t.toString());
 					continue;
 				}
 				
@@ -761,15 +1129,22 @@ public class MainController extends AbstractController implements MethodEvaluato
 				}
 				
 				/* Perform the command using the appropriate subcontroller */
-				ControllerStatus status = controller.performCommand(t.getId(), t.getParams());
-				if (status.getLastCmdStatus() != Status.OK) {
+				try {
+					ControllerStatus status = controller.performCommand(t.getId(), t.getParams());
+					if (status.getLastCmdStatus() != Status.OK) {
+						OLog.err("Task failed: " + t.toString());
+						OLog.err(status.toString());
+						retStatus = Status.FAILED;
+						break;
+					}
+					retStatus = Status.OK;
+					OLog.info("Task Finished: " + t.toString());
+				} catch (Exception e) {
 					OLog.err("Task failed: " + t.toString());
-					OLog.err(status.toString());
+					OLog.err("Exception ocurred: " + e.getMessage() );
 					retStatus = Status.FAILED;
 					break;
 				}
-				retStatus = Status.OK;
-				OLog.info("Task Finished: " + t.toString());
 			}
 			
 			OLog.info("Procedure Finished: " + p.getId());

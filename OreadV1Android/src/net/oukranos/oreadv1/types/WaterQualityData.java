@@ -62,4 +62,28 @@ public class WaterQualityData {
 		return;
 	}
 	
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append("id = ");
+		sb.append(this.id);
+		sb.append(", ");
+		sb.append("dateRecorded = ");
+		sb.append(this.getTimestamp());
+		sb.append(", ");
+		sb.append("pH = ");
+		sb.append(this.pH);
+		sb.append(", ");
+		sb.append("do2 = ");
+		sb.append(this.dissolved_oxygen);
+		sb.append(", ");
+		sb.append("ec = ");
+		sb.append(this.conductivity);
+		sb.append(", ");
+		sb.append("temp = ");
+		sb.append(this.temperature);
+		sb.append(", ");
+		sb.append("turb = ");
+		sb.append(this.turbidity);
+		return (sb.toString());
+	}
 }

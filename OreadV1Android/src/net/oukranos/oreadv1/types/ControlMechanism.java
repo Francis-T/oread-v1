@@ -152,8 +152,8 @@ public abstract class ControlMechanism {
 			}
 
 			this._dataOffset = offset;
-			OLog.info("Done processing." + "[" + new String(this._dataBuffer) + "]" +
-					  "New offset = " + Integer.toString(_dataOffset));
+//			OLog.info("Done processing." + "[" + new String(this._dataBuffer) + "]" +
+//					  "New offset = " + Integer.toString(_dataOffset));
 		} else {
 			OLog.info("Cannot process due to invalid lengths");
 		}

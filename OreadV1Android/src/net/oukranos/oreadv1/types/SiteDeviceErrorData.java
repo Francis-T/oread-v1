@@ -24,8 +24,8 @@ public class SiteDeviceErrorData implements JsonEncodableData {
 	}
 
 	@Override
-	public String encodeToJsonString() {
-		JSONObject request = encodeToJson();
+	public String encodeToJson() {
+		JSONObject request = encodeToJsonObject();
 		if (request == null) {
 			return "";
 		}
@@ -34,7 +34,7 @@ public class SiteDeviceErrorData implements JsonEncodableData {
     }
 
 	@Override
-	public JSONObject encodeToJson() {
+	public JSONObject encodeToJsonObject() {
 		JSONObject request = new JSONObject();
 		try {
 			request.put("device",   this._device);

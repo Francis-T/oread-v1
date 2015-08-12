@@ -187,7 +187,16 @@ public class AndroidInternetBridge implements InternetBridgeIntf {
 		
 		/* Save this as the last httpResponse */
 		_lastHttpResponse = httpResp;
-		
+
+//		String response = "";
+//		try {
+//			response = EntityUtils.toString(this._lastHttpResponse.getEntity());
+//		} catch (Exception e) {
+//			OLog.err("Failed to parse response: " + e.getMessage());
+//			response = "";
+//		}
+//		
+//		OLog.info("Response: " + response);
 
 		int statusCode = httpResp.getStatusLine().getStatusCode();
 		String statusMsg = httpResp.getStatusLine().getReasonPhrase();

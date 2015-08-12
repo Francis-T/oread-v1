@@ -445,7 +445,7 @@ public class AutomationController extends AbstractController implements
 			super(bluetooth);
 			this.setName("Drain Valve");
 			this.setBlocking(true);
-			this.setTimeoutDuration(20000);
+			this.setTimeoutDuration(30000);
 		}
 
 		@Override
@@ -576,9 +576,9 @@ public class AutomationController extends AbstractController implements
 	}
 
 	private class CuZnAutosampler extends ControlMechanism {
-		private static final String ACTV_CMD_STR = "I2C 4 n x";
-		private static final String DEACT_CMD_STR = "I2C 4 n y";
-		private static final String STATE_CMD_STR = "I2C 4 y @";
+		private static final String ACTV_CMD_STR = "I2C 2 n x";
+		private static final String DEACT_CMD_STR = "I2C 2 n y";
+		private static final String STATE_CMD_STR = "I2C 2 y @";
 
 		public CuZnAutosampler(BluetoothController bluetooth) {
 			super(bluetooth);
@@ -587,29 +587,14 @@ public class AutomationController extends AbstractController implements
 //			this.setTimeoutDuration(40000);
 //			this.setPollable(true);
 //			this.setPollDuration(5000);
-			this.setTimeoutDuration(600000);
+			this.setTimeoutDuration(720000);
 			this.setPollable(true);
 			this.setPollDuration(30000);
 		}
 
 		@Override
 		public Status activate() {
-//			int dataLen = ACTV_CMD_STR.getBytes().length;
-//			byte data[] = new byte[dataLen+2];
-//			
-//			/* TODO DEBUG EXCEPTION */
-//			try {
-//				System.arraycopy(ACTV_CMD_STR.getBytes(), 0, 
-//								 data, 0, dataLen+1);
-//				data[dataLen] = 0;
-//				data[dataLen+1] = '\r';
-//			} catch (Exception e) {
-//				OLog.err(e.getMessage());
-//				data = ACTV_CMD_STR.getBytes();
-//			}
-//			
-//			return send(data);
-			return this.activate("2");
+			return send(ACTV_CMD_STR.getBytes());
 		}
 
 		@Override
@@ -619,26 +604,7 @@ public class AutomationController extends AbstractController implements
 
 		@Override
 		public Status activate(String params) {
-			int dataLen = ACTV_CMD_STR.getBytes().length;
-			byte data[] = new byte[dataLen+2];
-			
-			/* TODO DEBUG EXCEPTION */
-			try {
-				System.arraycopy(ACTV_CMD_STR.getBytes(), 0, 
-								 data, 0, dataLen);
-				try {
-					data[dataLen] = Byte.decode(params);
-				} catch(NumberFormatException ne) {
-					data[dataLen] = 0;  
-					OLog.err("Could not decode activate param");
-				}
-				data[dataLen+1] = '\r';
-			} catch (Exception e) {
-				OLog.err(e.getMessage());
-				data = ACTV_CMD_STR.getBytes();
-			}
-			
-			return send(data);
+			return send(ACTV_CMD_STR.getBytes());
 		}
 
 		@Override
@@ -662,6 +628,7 @@ public class AutomationController extends AbstractController implements
 			
 			String response = new String(data);
 			if ((response.startsWith("Cu:")) || (response.startsWith("Zn:"))) {
+				OLog.info("Data obtained - " + response);
 				return false;
 			}
 			

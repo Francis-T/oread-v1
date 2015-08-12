@@ -26,7 +26,8 @@ public class ConfigManager {
 	private static final String DEFAULT_CFG_FILE_TEMP_NAME = "oread_config_temp.xml";
 	private static final String DEFAULT_CFG_FULL_FILE_PATH = DEFAULT_CFG_FILE_PATH + "/" + DEFAULT_CFG_FILE_NAME;
 	private static final String DEFAULT_DEVICE_CONFIG_URL_BASE = "http://miningsensors.info/deviceconf";
-	private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "TEST_DEVICE";
+	private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "DV862808028030255";
+	//private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "TEST_DEVICE";
 	private static final long 	DEFAULT_CONFIG_FILE_AGE_LIMIT = (8 * 60 * 60 * 1000); // ~8 hours old
 	
 	private static ConfigManager _configMgr = null;
@@ -80,12 +81,14 @@ public class ConfigManager {
 	public Status loadConfigFile(String file) {
 		if (file == null) {
 			OLog.err("Invalid parameter: file is NULL");
+			_config = null;
 			return Status.FAILED;
 		}
 		
 		_config = this.getConfig(file);
 		if (_config == null) {
 			OLog.err("Failed to get config file: " + file);
+			_config = null;
 			return Status.FAILED;
 		}
 		
@@ -131,10 +134,12 @@ public class ConfigManager {
 		}
 		
 		/* Attempt to download the new config file */
+		OLog.info("Downloading config file...");
 		if (this.downloadConfigFile(context, DEFAULT_CFG_FILE_PATH, 
 				DEFAULT_CFG_FILE_TEMP_NAME) == Status.OK) {
 			
 			/* Attempt to reload the config file */
+			OLog.info("Loading config file...");
 			if ( this.loadConfigFile(cfgFilePath) != Status.OK ) {
 				OLog.err("Failed to load config file");
 				return Status.FAILED;
@@ -223,6 +228,12 @@ public class ConfigManager {
 		if (configFileStr == null) {
 			OLog.err("Invalid config file content");
 			return Status.FAILED;
+		}
+		
+		try {
+			Thread.sleep(100);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
 		}
 		
 		/* Save data to file */

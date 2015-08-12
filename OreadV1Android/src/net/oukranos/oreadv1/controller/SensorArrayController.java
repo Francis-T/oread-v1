@@ -569,7 +569,7 @@ public class SensorArrayController extends AbstractController implements
 			/* Configure the response matchers */ // TODO Should be abstracted
 			R_RESP_PREF  = "EC: ";
 			R_DATA_PART	 = "[-]*[0-9]+\\.*[0-9]*";
-			R_RESP_DATA  = R_DATA_PART + "," + R_DATA_PART + "," + R_DATA_PART;
+			R_RESP_DATA  = R_DATA_PART + "," + R_DATA_PART + "," + R_DATA_PART + "," + R_DATA_PART;
 			R_RESP_OK  	 = "\\*OK";
 			R_RESP_ERR 	 = "\\*ERR";
 
@@ -743,7 +743,7 @@ public class SensorArrayController extends AbstractController implements
 			/* Configure the response matchers */ // TODO Should be abstracted
 			R_RESP_PREF  = "TU: ";
 			R_DATA_PART	 = "[-]*[0-9]+\\.*[0-9]*";
-			R_RESP_DATA  = R_DATA_PART;
+			R_RESP_DATA  = R_DATA_PART + ", " + R_DATA_PART;
 			R_RESP_OK  	 = "\\*OK";
 			R_RESP_ERR 	 = "\\*ERR";
 			

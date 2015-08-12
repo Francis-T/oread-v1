@@ -29,18 +29,22 @@ import net.oukranos.oreadv1.types.config.Configuration;
 import net.oukranos.oreadv1.util.OreadLogger;
 import net.oukranos.oreadv1.util.OreadTimestamp;
 
+import android.annotation.TargetApi;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
 import android.hardware.Camera;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Environment;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
 import android.view.WindowManager;
 
+@TargetApi(Build.VERSION_CODES.ICE_CREAM_SANDWICH)
 public class OreadService extends Service implements MainControllerEventHandler, CameraControlIntf  {
 	/* Get an instance of the OreadLogger class to handle logging */
 	private static final OreadLogger OLog = OreadLogger.getInstance();
@@ -211,10 +215,13 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	private Status initializeMainController() {
 		if (_mainController == null) {
 			ConfigManager cfgMan = ConfigManager.getInstance();
-			Configuration config = cfgMan.getConfig(this._defaultConfigFile);
-			if (config == null) {
-				OLog.warn("Invalid config file");
-			}
+			Configuration config = cfgMan.getConfig(_defaultConfigFile);
+					
+//					;getLoadedConfig();
+//			if (config == null) {
+//				OLog.warn("Invalid config file");
+//				config = cfgMan.getConfig(this._defaultConfigFile);
+//			}
 			
 			_mainController = MainController.getInstance(this);
 			_mainController.registerEventHandler(this);
@@ -308,6 +315,14 @@ public class OreadService extends Service implements MainControllerEventHandler,
 				_cameraParams.setPictureSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
 				_cameraParams.setPreviewSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
 				_cameraParams.setRotation(90);
+				_cameraParams.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+				
+				/* Define the camera focus areas */
+				Camera.Area focusArea = new Camera.Area(new Rect(-167,0,167,562), 1000);
+				List<Camera.Area> focusAreas = new ArrayList<Camera.Area>();
+				focusAreas.add(focusArea);
+				
+				_cameraParams.setFocusAreas(focusAreas);
 				_camera.setParameters(_cameraParams);
 				
 			} catch (Exception e) {

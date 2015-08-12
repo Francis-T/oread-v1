@@ -68,8 +68,8 @@ public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 	}
 
 	@Override
-	public String encodeToJsonString() {
-		JSONObject request = encodeToJson();
+	public String encodeToJson() {
+		JSONObject request = encodeToJsonObject();
 		if (request == null) {
 			return "";
 		}
@@ -78,7 +78,7 @@ public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 	}
 
 	@Override
-	public JSONObject encodeToJson() {
+	public JSONObject encodeToJsonObject() {
 		JSONObject request = new JSONObject();
 		
 		try {
@@ -105,26 +105,9 @@ public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 		return request;
 	}
 
-	
-	public static void main(String args[]) {
-		SiteDeviceReportData sd1 = new SiteDeviceReportData("DO2", "mg/L", 7.00f, "OK");
-		System.out.println("JSON: " + sd1.encodeToJsonString());
-
-		SiteDeviceReportData sd2 = new SiteDeviceReportData("DO2", "mg/L", 9.43f, "OK");
-		System.out.println("JSON: " + sd2.encodeToJsonString());
-		
-		SiteDeviceData sdat = new SiteDeviceData("test_device_id", "live");
-		sdat.addReportData(sd1);
-		sdat.addReportData(sd2);
-		
-		System.out.println("Result: " + sdat.encodeToJsonString());
-		
-		return;
-	}
-
 	@Override
 	public HttpEntity encodeDataToHttpEntity() {
-		JSONObject request  = encodeToJson();
+		JSONObject request  = encodeToJsonObject();
 		
 		if (request == null) {
 			OLog.err("Failed to get HttpDataEntity");
@@ -142,5 +125,22 @@ public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 		OLog.info("(SiteDeviceData) Message: " + ((StringEntity)e).toString() );
 		
 		return e;
+	}
+
+	
+	public static void main(String args[]) {
+		SiteDeviceReportData sd1 = new SiteDeviceReportData("DO2", "mg/L", 7.00f, "OK");
+		System.out.println("JSON: " + sd1.encodeToJson());
+
+		SiteDeviceReportData sd2 = new SiteDeviceReportData("DO2", "mg/L", 9.43f, "OK");
+		System.out.println("JSON: " + sd2.encodeToJson());
+		
+		SiteDeviceData sdat = new SiteDeviceData("test_device_id", "live");
+		sdat.addReportData(sd1);
+		sdat.addReportData(sd2);
+		
+		System.out.println("Result: " + sdat.encodeToJson());
+		
+		return;
 	}
 }

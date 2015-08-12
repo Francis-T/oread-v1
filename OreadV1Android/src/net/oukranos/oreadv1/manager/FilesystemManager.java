@@ -35,18 +35,21 @@ public class FilesystemManager {
 			saveDir.mkdirs();
 		}
 		
-		/* Attempt to create the new file */
+		/* Check if the file does not yet exist */
 		File saveFile = new File(saveDir, filename);
-		try {
-			if (!saveFile.createNewFile())
-			{
-				OLog.err("Error: Failed to create save file (" + filename + ")!");
+        if (!saveFile.exists()) {
+        	/* If so, create a new file */
+			try {
+				if (!saveFile.createNewFile())
+				{
+					OLog.err("Error: Failed to create save file (" + filename + ")!");
+					return Status.FAILED;
+				}
+			} catch (Exception e) {
+				OLog.err("Exception occurred: "  + e.getMessage());
 				return Status.FAILED;
 			}
-		} catch (Exception e) {
-			OLog.err("Exception occurred: "  + e.getMessage());
-			return Status.FAILED;
-		}
+        }
 
 		/* Write data into the new file */ 
 		try {
