@@ -5,6 +5,7 @@ import org.apache.http.HttpEntity;
 import android.content.Context;
 import net.oukranos.oreadv1.android.AndroidConnectivityBridge;
 import net.oukranos.oreadv1.android.AndroidInternetBridge;
+import net.oukranos.oreadv1.android.AndroidStoredDataBridge;
 import net.oukranos.oreadv1.interfaces.ConnectivityBridgeIntf;
 import net.oukranos.oreadv1.interfaces.DeviceIdentityIntf;
 import net.oukranos.oreadv1.interfaces.HttpEncodableData;
@@ -26,8 +27,8 @@ public class ConfigManager {
 	private static final String DEFAULT_CFG_FILE_TEMP_NAME = "oread_config_temp.xml";
 	private static final String DEFAULT_CFG_FULL_FILE_PATH = DEFAULT_CFG_FILE_PATH + "/" + DEFAULT_CFG_FILE_NAME;
 	private static final String DEFAULT_DEVICE_CONFIG_URL_BASE = "http://miningsensors.info/deviceconf";
-	private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "DV862808028030255";
-	//private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "TEST_DEVICE";
+	//private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "DV862808028030255";
+	private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "TEST_DEVICE";
 	private static final long 	DEFAULT_CONFIG_FILE_AGE_LIMIT = (8 * 60 * 60 * 1000); // ~8 hours old
 	
 	private static ConfigManager _configMgr = null;
@@ -120,10 +121,17 @@ public class ConfigManager {
 			OLog.err("Failed to load old config file");
 			return Status.FAILED;
 		}
+		_config = oldConfig;
+		
+		/* Record the current system time as the last updated time 
+		 * 	for the config file */
+		AndroidStoredDataBridge pDataStore1 
+			= AndroidStoredDataBridge.getInstance(context);
+		pDataStore1.put("LAST_CFG_UPDATE_TIME", "0");
 
 		/* Get the old config file age limit and time since last update */
 		long ageLimit = this.getConfigFileAgeLimit();
-		long lastUpdateAge = this.getConfigFileLastUpdateAge();
+		long lastUpdateAge = this.getConfigFileLastUpdateAge(context);
 		
 		/* If the elapsed time since the last config file update has hit the
 		 *   age limit, then a new config file should be downloaded */
@@ -137,16 +145,27 @@ public class ConfigManager {
 		OLog.info("Downloading config file...");
 		if (this.downloadConfigFile(context, DEFAULT_CFG_FILE_PATH, 
 				DEFAULT_CFG_FILE_TEMP_NAME) == Status.OK) {
+			String tempCfgFilePath = 
+					DEFAULT_CFG_FILE_PATH + "/" + DEFAULT_CFG_FILE_TEMP_NAME;
 			
 			/* Attempt to reload the config file */
 			OLog.info("Loading config file...");
-			if ( this.loadConfigFile(cfgFilePath) != Status.OK ) {
+			if ( this.loadConfigFile(tempCfgFilePath) != Status.OK ) {
 				OLog.err("Failed to load config file");
 				return Status.FAILED;
 			}
 		} else {
 			OLog.err("Failed to download config file");
+			return Status.FAILED;
 		}
+		
+		/* Record the current system time as the last updated time 
+		 * 	for the config file */
+		AndroidStoredDataBridge pDataStore 
+			= AndroidStoredDataBridge.getInstance(context);
+//		pDataStore.put("LAST_CFG_UPDATE_TIME", 
+//				Long.toString(System.currentTimeMillis()));
+		pDataStore.put("LAST_CFG_UPDATE_TIME", "0");
 		
 		return Status.OK;
 	}
@@ -224,17 +243,8 @@ public class ConfigManager {
 		}
 		
 		/* Retrieve the response from the network bridge */
-		String configFileStr = netBridge.getResponse();
-		if (configFileStr == null) {
-			OLog.err("Invalid config file content");
-			return Status.FAILED;
-		}
-		
-		try {
-			Thread.sleep(100);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
+		byte[] configFileBin = netBridge.getResponse();
+		String configFileStr = new String(configFileBin);
 		
 		/* Save data to file */
 		this.saveConfigFileData(configFileStr.getBytes(),
@@ -280,20 +290,31 @@ public class ConfigManager {
 		try {
 			ageThreshold = Long.decode(d.getValue());
 		} catch (NumberFormatException e) {
-			OLog.err(e.getMessage());
+			OLog.err("Could not decode age threshold: " + d.getValue());
 			ageThreshold = DEFAULT_CONFIG_FILE_AGE_LIMIT;
 		}
 		
 		return ageThreshold;
 	}
 	
-	private long getConfigFileLastUpdateAge() {
-		Long lastUpdated = 0l; 
+	private long getConfigFileLastUpdateAge(Context context) {
+		String result = null;
+		AndroidStoredDataBridge pDataStore 
+			= AndroidStoredDataBridge.getInstance(context);
+		if (pDataStore != null) {
+			result = pDataStore.get("LAST_CFG_UPDATE_TIME");
+		}
+		
+		if (result == null) {
+			OLog.warn("Config file has never been updated");
+			return 0l;
+		}
+		
+		Long lastUpdated = 0l;
 		try {
-			lastUpdated = (System.currentTimeMillis() - 
-					Long.decode(_config.getCreationDate()));
+			lastUpdated = Long.decode(result.trim());
 		} catch (Exception e) {
-			OLog.err(e.getMessage());
+			OLog.err("Exception ocurred: " + e.getMessage());
 			lastUpdated = 0l;
 		}
 		
@@ -305,10 +326,12 @@ public class ConfigManager {
 				+ "/" + DEFAULT_DEVICE_CONFIG_URL_ID;
 		
 		if (context == null) {
+			OLog.warn("Cannot get device config url: Invalid context");
 			return deviceConfigUrl;
 		}
 		
 		if (_config == null) {
+			OLog.warn("Cannot get device config url: Invalid configuration");
 			return deviceConfigUrl;
 		}
 		
@@ -316,42 +339,45 @@ public class ConfigManager {
 		
 		/* Obtain the base url from which the config files will be obtained */
 		d = _config.getData("device_config_url_base");
-		if (d == null) {
+		String url_base = DEFAULT_DEVICE_CONFIG_URL_BASE;
+		if (d != null) {
+			if (d.getType().equals("string") == false) {
+				return deviceConfigUrl;
+			}
+			
+			url_base = d.getValue();
+			if (url_base == null) {
+				return deviceConfigUrl;
+			}
+			
 			return deviceConfigUrl;
+		} else {
+			OLog.warn("No custom base url defined");
 		}
-		
-		if (d.getType().equals("string") == false) {
-			return deviceConfigUrl;
-		}
-		
-		String url_base = d.getValue();
-		if (url_base == null) {
-			return deviceConfigUrl;
-		}
-		
-		/* Save the base url to the device config url */
-		deviceConfigUrl = url_base + "/" + this.getDeviceConfigUrlId(context);
 
-		OLog.info("ConfigUrl: " + deviceConfigUrl);
 		/* OPTIONAL: Obtain the device id url from the config file.
 		 * 	By default, the device will attempt to obtain a unique ID based
 		 *  on its IMEI to use as its device id URL - the case below is 
 		 *  only executed if a device id is defined in the fonfig file. */
 		d = _config.getData("device_config_url_id");
-		if (d == null) {
+		String url_device_id = this.getDeviceConfigUrlId(context);
+		if (d != null) {
+			
+			if (d.getType().equals("string") == false) {
+				return deviceConfigUrl;
+			}
+			
+			url_device_id = d.getValue();
+			if (url_device_id == null) {
+				return deviceConfigUrl;
+			}
+			
 			return deviceConfigUrl;
+		} else {
+			OLog.warn("No custom device id defined");
 		}
 		
-		if (d.getType().equals("string") == false) {
-			return deviceConfigUrl;
-		}
-		
-		String url_device_id = d.getValue();
-		if (url_device_id == null) {
-			return deviceConfigUrl;
-		}
-		
-		/* Override the device id url based on the phone's IMEI */
+		/* Generate the full device config url */
 		deviceConfigUrl = url_base + "/" + url_device_id;
 		OLog.info("ConfigUrl: " + deviceConfigUrl);
 		
@@ -362,6 +388,7 @@ public class ConfigManager {
 		DeviceIdentityIntf deviceIdBridge = 
 				AndroidConnectivityBridge.getInstance();
 		if (deviceIdBridge == null) {
+			OLog.err("Could not obtain device identity bridge");
 			return DEFAULT_DEVICE_CONFIG_URL_ID;
 		}
 		

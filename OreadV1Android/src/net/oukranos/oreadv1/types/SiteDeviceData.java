@@ -68,7 +68,7 @@ public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 	}
 
 	@Override
-	public String encodeToJson() {
+	public String encodeToJsonString() {
 		JSONObject request = encodeToJsonObject();
 		if (request == null) {
 			return "";
@@ -88,13 +88,13 @@ public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 			
 			JSONArray reportDataArr = new JSONArray();
 			for (SiteDeviceReportData rd : _reportDataList) {
-				reportDataArr.put(rd.encodeToJson());
+				reportDataArr.put(rd.encodeToJsonObject());
 			}
 			request.put("reportData", reportDataArr);
 
 			JSONArray errDataArr = new JSONArray();
 			for (SiteDeviceErrorData ed : _errorDataList) {
-				errDataArr.put(ed.encodeToJson());
+				errDataArr.put(ed.encodeToJsonObject());
 			}
 			request.putOpt("errorData", errDataArr);
 			
@@ -130,16 +130,16 @@ public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 	
 	public static void main(String args[]) {
 		SiteDeviceReportData sd1 = new SiteDeviceReportData("DO2", "mg/L", 7.00f, "OK");
-		System.out.println("JSON: " + sd1.encodeToJson());
+		System.out.println("JSON: " + sd1.encodeToJsonString());
 
 		SiteDeviceReportData sd2 = new SiteDeviceReportData("DO2", "mg/L", 9.43f, "OK");
-		System.out.println("JSON: " + sd2.encodeToJson());
+		System.out.println("JSON: " + sd2.encodeToJsonString());
 		
 		SiteDeviceData sdat = new SiteDeviceData("test_device_id", "live");
 		sdat.addReportData(sd1);
 		sdat.addReportData(sd2);
 		
-		System.out.println("Result: " + sdat.encodeToJson());
+		System.out.println("Result: " + sdat.encodeToJsonString());
 		
 		return;
 	}

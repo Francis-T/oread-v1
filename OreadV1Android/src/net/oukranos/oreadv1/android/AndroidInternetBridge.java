@@ -9,6 +9,7 @@ import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.util.OreadLogger;
 
 import org.apache.http.HttpResponse;
+import org.apache.http.ParseException;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
@@ -29,7 +30,7 @@ public class AndroidInternetBridge implements InternetBridgeIntf {
 	private boolean _sendThreadRunning = false;
 	
 	private Context _context = null;
-	private HttpResponse _lastHttpResponse = null;
+	private byte[] _lastHttpResponse = null;
 	private static final HttpClient _httpClient = new DefaultHttpClient();
 
 	private AndroidInternetBridge() {
@@ -45,10 +46,6 @@ public class AndroidInternetBridge implements InternetBridgeIntf {
 	
 	@Override
 	public Status initialize(Object initObject) {
-//		if (_httpClient == null) {
-//			_httpClient = new DefaultHttpClient();
-//		}
-		
 		if (_context == null) {
 			_context = (Context) initObject;
 		}
@@ -103,31 +100,18 @@ public class AndroidInternetBridge implements InternetBridgeIntf {
 	}
 	
 	@Override
-	public String getResponse() {
+	public byte[] getResponse() {
 		if (_context == null) {
 			OLog.err("Not attached to an Android activity");
-			return "";
+			return null;
 		}
 		
 		if (_httpClient == null) {
 			OLog.err("HttpClient is null");
-			return "";
+			return null;
 		}
 		
-		if (this._lastHttpResponse == null) {
-			return "";
-		}
-		
-		String response = ""; 
-
-		try {
-			response = EntityUtils.toString(this._lastHttpResponse.getEntity());
-		} catch (Exception e) {
-			OLog.err("Failed to parse response: " + e.getMessage());
-			response = "";
-		}
-		
-		return response;
+		return this._lastHttpResponse;
 	}
 
 	@Override
@@ -153,6 +137,8 @@ public class AndroidInternetBridge implements InternetBridgeIntf {
 			OLog.err("SendableData is NULL");
 			return Status.FAILED;
 		}
+		
+		this._lastHttpResponse = null;
 
 		String url = sendableData.getUrl();
 		if (url == null || url.isEmpty()) {
@@ -185,8 +171,12 @@ public class AndroidInternetBridge implements InternetBridgeIntf {
 			return Status.FAILED;
 		}
 		
-		/* Save this as the last httpResponse */
-		_lastHttpResponse = httpResp;
+		try {
+			this._lastHttpResponse = EntityUtils.toByteArray(httpResp.getEntity());
+		} catch (Exception e) {
+			OLog.err("");
+			this._lastHttpResponse = null;
+		}
 
 //		String response = "";
 //		try {

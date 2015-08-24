@@ -334,6 +334,9 @@ public class MainController extends AbstractController implements MethodEvaluato
 		} else if (shortCmdStr.equals("updateCachedData")) {
 			updateCachedReportData();
 			this.writeInfo("Command Performed: Updated Cached Data");
+		} else if (shortCmdStr.equals("unsendData")) {
+			unsendSentData();
+			this.writeInfo("Command Performed: Updated Cached Data");
 		/** XXX ******************** XXX **/
 		/** XXX END Testing Commands XXX **/
 		/** XXX ******************** XXX **/
@@ -573,19 +576,35 @@ public class MainController extends AbstractController implements MethodEvaluato
 	}
 	private CachedReportData _reportDataTemp = null;
 	
-	private Status initializeSubControllers() {
-		/* Initialize data buffers */
+	private Status initializeDataBuffers() {
+		DataStore ds = _mainInfo.getDataStore();
+		if (_mainInfo.getDataStore() == null) {
+			return Status.FAILED;
+		}
+		
+		
+		
+		/* Initialize the data buffer objects */
 		_chemPresenceData = new ChemicalPresenceData(1);
 		_waterQualityData = new WaterQualityData(1);
 		_reportDataTemp = new CachedReportData();
 		_siteDeviceData = new SiteDeviceData("DV862808028030255", "test");
 		_siteDeviceImage = new SiteDeviceImage("DV862808028030255", "test", "", "");
 		
-		this._mainInfo.getDataStore().add("hg_as_detection_data", "ChemicalPresenceData", _chemPresenceData);
-		this._mainInfo.getDataStore().add("h2o_quality_data", "WaterQualityData", _waterQualityData);
-		this._mainInfo.getDataStore().add("report_data_temp", "ReportDataTemp", _reportDataTemp);
-		this._mainInfo.getDataStore().add("site_device_data", "SiteDeviceData", _siteDeviceData);
-		this._mainInfo.getDataStore().add("site_device_image", "SiteDeviceImage", _siteDeviceImage);
+		ds.add("hg_as_detection_data", "ChemicalPresenceData", _chemPresenceData);
+		ds.add("h2o_quality_data", "WaterQualityData", _waterQualityData);
+		ds.add("report_data_temp", "ReportDataTemp", _reportDataTemp);
+		ds.add("site_device_data", "SiteDeviceData", _siteDeviceData);
+		ds.add("site_device_image", "SiteDeviceImage", _siteDeviceImage);
+		
+		return Status.OK;
+	}
+	
+	private Status initializeSubControllers() {
+		if (initializeDataBuffers() != Status.OK) {
+			OLog.err("Failed to initialise data buffers");
+			return Status.FAILED;
+		}
 		
 		/* Initialize all sub-controllers here */
 		_bluetoothController = BluetoothController.getInstance(this._mainInfo);
@@ -658,6 +677,13 @@ public class MainController extends AbstractController implements MethodEvaluato
 		this._mainInfo.getDataStore().remove("site_device_data");
 		this._mainInfo.getDataStore().remove("site_device_image");
 		this._mainInfo.getDataStore().remove("live_data_url");
+
+		/* Add persistent data flag for unsent water quality data availability */
+		AndroidStoredDataBridge pDataStore 
+			= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
+		if (pDataStore != null) {
+			pDataStore.remove("LAST_WQ_DATA");
+		}
 		
 		return Status.OK;
 	}
@@ -778,6 +804,18 @@ public class MainController extends AbstractController implements MethodEvaluato
 		}
 		pDataStore.put("WQ_DATA_AVAILABLE", "true");
 		
+		/* Consolidate all water quality params in one string */
+		StringBuilder sb = new StringBuilder();
+		sb.append(Double.toString(d.pH) + ",");
+		sb.append(Double.toString(d.dissolved_oxygen) + ",");
+		sb.append(Double.toString(d.conductivity) + ",");
+		sb.append(Double.toString(d.temperature) + ",");
+		sb.append(Double.toString(d.turbidity));
+		
+		/* Store last obtained data for quick display upon app screen reload */
+		pDataStore.put("LAST_WQ_DATA", sb.toString());
+		OLog.info("Saved Water Quality Data: " + pDataStore.get("LAST_WQ_DATA"));
+		
 		return;
 	}
 	
@@ -829,13 +867,13 @@ public class MainController extends AbstractController implements MethodEvaluato
 		
 		/* Fetch data into temporary storage */
 		CachedReportData crDataTemp = null;
-		for (int i = 0; i < 10; i++) {
-			
+		int i = 0;
+		for (i = 0; i < 10; i++) {
 			/* Fetch the cached report data */
 			crDataTemp = new CachedReportData();
 			Status status = _databaseController.fetchReportData(crDataTemp);
 			if (status != Status.OK) {
-				writeWarn("No more report data found");
+				writeWarn("No more report data found");	
 				break;
 			}
 			
@@ -862,7 +900,23 @@ public class MainController extends AbstractController implements MethodEvaluato
 		}
 		
 		/* TODO Do something with the accumulated report data (e.g. send to the server) */
-		OLog.info("Sending data to server: \n" + siteData.encodeToJson());
+		if (i == 0) {
+			return;
+		}
+		
+		OLog.info("Sending data to server: \n" + siteData.encodeToJsonString());
+//		if (_networkController != null) {
+//			String url = null;
+//			String data = null;
+//			
+//			try {
+//				url = (String) _mainInfo.getDataStore()
+//						.retrieveObject("live_data_url");
+//				_networkController.send(url, siteData);
+//			} catch (Exception e) {
+//				OLog.err("Exception occurred: " + e.getMessage());
+//			}
+//		}
 		
 		/* If successfully sent to the server, update the records */
 		for (Integer recId : recIdList) {
@@ -976,6 +1030,22 @@ public class MainController extends AbstractController implements MethodEvaluato
 	/** XXX ****************************** XXX **/
 	/** XXX BEGIN: Testing Command Methods XXX **/
 	/** XXX ****************************** XXX **/
+	private void unsendSentData() {
+		for (int i = 150; i < 201; i++) {
+			_databaseController.updateRecord(Integer.toString(i), false);
+		}		
+		
+		/* Add persistent data flag for unsent water quality data availability */
+		AndroidStoredDataBridge pDataStore 
+			= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
+		if (pDataStore == null) {
+			return;
+		}
+		pDataStore.put("WQ_DATA_AVAILABLE", "true");
+		
+		return;
+	}
+	
 	private void generateWaterQualityData() {
 		_waterQualityData.pH = 7.00f + new Random().nextFloat();
 		_waterQualityData.dissolved_oxygen = 9.08f + new Random().nextFloat();

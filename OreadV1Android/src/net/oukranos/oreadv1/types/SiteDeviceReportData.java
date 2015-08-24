@@ -79,6 +79,8 @@ public class SiteDeviceReportData implements JsonEncodableData {
 			return Status.FAILED;
 		}
 		
+		OLog.info("Decoding JSON: \n" + jsonStr);
+		
 		long timestamp = 0;
 		String type = "";
 		String units = "";
@@ -111,12 +113,19 @@ public class SiteDeviceReportData implements JsonEncodableData {
 	}
 
 	@Override
-	public String encodeToJson() {
+	public String encodeToJsonString() {
 		JSONObject request = encodeToJsonObject();
 		if (request == null) {
 			return "";
 		}
-		
+		OLog.info("JSON Encoded Data:");
+		OLog.info("    dateRecorded: " + this.getTimestamp());
+		OLog.info("    readingOf: " + this._type);
+		OLog.info("    units: " + this._units);
+		OLog.info("    value: " + this._value);
+		OLog.info("    errMsg: " + this._errMsg);
+
+		OLog.info("Sub(+1)-level JSON Object: " + request.toString());
 		return request.toString();
 	}
 
@@ -133,13 +142,14 @@ public class SiteDeviceReportData implements JsonEncodableData {
 			System.out.println("Encode data to JSON failed");
 			return null;
 		}
+		OLog.info("Sub-level JSON Object: " + request.toString());
 		
 		return request;
 	}
 	
 	public static void main(String args[]) {
 		SiteDeviceReportData sd = new SiteDeviceReportData("pH", "", 7.00f, "OK");
-		System.out.println("JSON: " + sd.encodeToJson());
+		System.out.println("JSON: " + sd.encodeToJsonString());
 		return;
 	}
 }

@@ -24,7 +24,7 @@ public class SiteDeviceErrorData implements JsonEncodableData {
 	}
 
 	@Override
-	public String encodeToJson() {
+	public String encodeToJsonString() {
 		JSONObject request = encodeToJsonObject();
 		if (request == null) {
 			return "";

@@ -167,12 +167,12 @@ public class AutomationController extends AbstractController implements
 		OLog.info("Received data in automation");
 		
 		if (data == null) {
-			OLog.err("Received data is null");
+			OLog.warn("Received data is null");
 			return;
 		}
 
 		if (_activeMechanism == null) {
-			OLog.err("No active mechanisms!");
+			OLog.warn("No active mechanisms!");
 			return;
 		}
 		
@@ -356,8 +356,8 @@ public class AutomationController extends AbstractController implements
 	/** Inner Classes **/
 	/*******************/
 	private class SubmersiblePump extends ControlMechanism {
-		private static final String ACTV_CMD_STR = "PUMP START";
-		private static final String DEACT_CMD_STR = "PUMP STOP";
+		private static final String ACTV_CMD_STR = "ACTV S1";
+		private static final String DEACT_CMD_STR = "DEACT S1";
 
 		public SubmersiblePump(BluetoothController bluetooth) {
 			super(bluetooth);
@@ -397,8 +397,8 @@ public class AutomationController extends AbstractController implements
 	}
 	
 	private class PeristalticPump extends ControlMechanism {
-		private static final String ACTV_CMD_STR = "FILL START";
-		private static final String DEACT_CMD_STR = "FILL STOP";
+		private static final String ACTV_CMD_STR = "ACTV P1";
+		private static final String DEACT_CMD_STR = "DEACT P1";
 
 		public PeristalticPump(BluetoothController bluetooth) {
 			super(bluetooth);
@@ -438,8 +438,8 @@ public class AutomationController extends AbstractController implements
 	}
 	
 	private class DrainValve extends ControlMechanism {
-		private static final String ACTV_CMD_STR = "DRAIN START";
-		private static final String DEACT_CMD_STR = "DRAIN STOP";
+		private static final String ACTV_CMD_STR = "ACTV V1";
+		private static final String DEACT_CMD_STR = "DEACT V1";
 
 		public DrainValve(BluetoothController bluetooth) {
 			super(bluetooth);

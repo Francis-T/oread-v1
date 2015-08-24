@@ -33,6 +33,7 @@ public class AndroidConnectivityBridge implements DeviceIdentityIntf, Connectivi
 		if (_androidConnectivityBridge == null) {
 			_androidConnectivityBridge = new AndroidConnectivityBridge();
 		}
+		
 		return _androidConnectivityBridge;
 	}
 	

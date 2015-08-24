@@ -10,6 +10,8 @@ import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlPullParserFactory;
 
+import android.util.Log;
+
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.config.Configuration;
 import net.oukranos.oreadv1.types.config.Data;
@@ -39,6 +41,10 @@ public class ConfigXmlParser {
 			e.printStackTrace();
 		}
 		
+		config.setId("");
+		config.setVersion("");
+		config.setCreationDate("");
+		
 		XmlParsingMetaData xmpData = new XmlParsingMetaData();
 		int eventType = xpp.getEventType();
 		do {
@@ -61,6 +67,10 @@ public class ConfigXmlParser {
 			}
 			eventType = xpp.next();
 		} while (eventType != XmlPullParser.END_DOCUMENT);
+		
+		Log.d("DEBUG", "DEBUG: Config id: " + config.getId());
+		Log.d("DEBUG", "DEBUG: Config version: " + config.getVersion());
+		Log.d("DEBUG", "DEBUG: Config creation date: " + config.getCreationDate());
 		
 		return Status.OK;
 	}

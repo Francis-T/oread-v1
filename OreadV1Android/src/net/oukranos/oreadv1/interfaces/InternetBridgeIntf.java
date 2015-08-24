@@ -6,6 +6,6 @@ import net.oukranos.oreadv1.types.Status;
 public interface InternetBridgeIntf {
 	public Status initialize(Object initObject);
 	public Status send(SendableData sendableData);
-	public String getResponse();
+	public byte[] getResponse();
 	public Status destroy();
 }

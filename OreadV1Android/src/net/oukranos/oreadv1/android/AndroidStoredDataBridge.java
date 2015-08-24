@@ -70,5 +70,19 @@ public class AndroidStoredDataBridge implements PersistentDataStoreIntf {
 		
 		return null;
 	}
-
+	
+	@Override
+	public void remove(String id) {
+		if (id == null) {
+			return;
+		}
+		
+		if (_sharedPrefs != null) {
+			if (_sharedPrefs.contains(id)) {
+				_sharedPrefs.edit().remove(id).commit();
+			}
+		}
+		
+		return;
+	}
 }

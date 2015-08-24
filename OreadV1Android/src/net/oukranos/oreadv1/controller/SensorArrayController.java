@@ -197,10 +197,12 @@ public class SensorArrayController extends AbstractController implements
 			OLog.err("Invalid state for sensor read");
 			return Status.FAILED;
 		}
+		
+		/* Clear received data prior to taking any readings */
+		s.clearReceivedData();
 
 		if (this.getState() == ControllerState.READY) {
 			if (performSensorRead(s) != Status.OK) {
-				s.clearReceivedData();
 				OLog.err("Failed to receive from " + s.getName());
 				return Status.FAILED;
 			}
@@ -214,7 +216,6 @@ public class SensorArrayController extends AbstractController implements
 				}
 			}
 		}
-		s.clearReceivedData();
 
 		_sensorData.updateTimestamp();
 		OLog.info("Read " + s.getName() + " finished.");
@@ -425,9 +426,9 @@ public class SensorArrayController extends AbstractController implements
 	/** Inner Classes **/
 	/*******************/
 	private class PHSensor extends Sensor {
-		private static final String READ_CMD_STR = "READ 1";
-		private static final String INFO_CMD_STR = "FORCE 1 I";
-		private static final String CALIBRATE_CMD_STR = "FORCE 1 Cal,";
+		private static final String READ_CMD_STR = "READ pH";
+		private static final String INFO_CMD_STR = "FORCE pH I";
+		private static final String CALIBRATE_CMD_STR = "FORCE pH Cal,";
 
 		public PHSensor(BluetoothController bluetooth) {
 			super(bluetooth);
@@ -486,9 +487,9 @@ public class SensorArrayController extends AbstractController implements
 	}
 
 	private class DissolvedOxygenSensor extends Sensor {
-		private static final String READ_CMD_STR = "READ 2";
-		private static final String INFO_CMD_STR = "FORCE 2 I";
-		private static final String CALIBRATE_CMD_STR = "FORCE 2 Cal";
+		private static final String READ_CMD_STR = "READ DO2";
+		private static final String INFO_CMD_STR = "FORCE DO2 I";
+		private static final String CALIBRATE_CMD_STR = "FORCE DO2 Cal";
 
 		public DissolvedOxygenSensor(BluetoothController bluetooth) {
 			super(bluetooth);
@@ -557,9 +558,9 @@ public class SensorArrayController extends AbstractController implements
 	}
 
 	private class ConductivitySensor extends Sensor {
-		private static final String READ_CMD_STR = "READ 3";
-		private static final String INFO_CMD_STR = "FORCE 3 I";
-		private static final String CALIBRATE_CMD_STR = "FORCE 3 Cal,";
+		private static final String READ_CMD_STR = "READ EC";
+		private static final String INFO_CMD_STR = "FORCE EC I";
+		private static final String CALIBRATE_CMD_STR = "FORCE EC Cal,";
 
 
 		public ConductivitySensor(BluetoothController bluetooth) {
@@ -639,9 +640,9 @@ public class SensorArrayController extends AbstractController implements
 	}
 
 	private class TemperatureSensor extends Sensor {
-		private static final String READ_CMD_STR = "READ 4";
-		private static final String INFO_CMD_STR = "FORCE 4 X";
-		private static final String CALIBRATE_CMD_STR = "FORCE 4 X";
+		private static final String READ_CMD_STR = "READ TM";
+		private static final String INFO_CMD_STR = "FORCE TM X";
+		private static final String CALIBRATE_CMD_STR = "FORCE TM X";
 
 		public TemperatureSensor(BluetoothController bluetooth) {
 			super(bluetooth);
@@ -732,9 +733,9 @@ public class SensorArrayController extends AbstractController implements
 	}
 
 	private class TurbiditySensor extends Sensor {
-		private static final String READ_CMD_STR = "READ 5";
-		private static final String INFO_CMD_STR = "FORCE 5 X";
-		private static final String CALIBRATE_CMD_STR = "FORCE 5 X";
+		private static final String READ_CMD_STR = "READ TU";
+		private static final String INFO_CMD_STR = "FORCE TU X";
+		private static final String CALIBRATE_CMD_STR = "FORCE TU X";
 
 		public TurbiditySensor(BluetoothController bluetooth) {
 			super(bluetooth);
@@ -743,7 +744,7 @@ public class SensorArrayController extends AbstractController implements
 			/* Configure the response matchers */ // TODO Should be abstracted
 			R_RESP_PREF  = "TU: ";
 			R_DATA_PART	 = "[-]*[0-9]+\\.*[0-9]*";
-			R_RESP_DATA  = R_DATA_PART + ", " + R_DATA_PART;
+			R_RESP_DATA  = R_DATA_PART + "," + R_DATA_PART;
 			R_RESP_OK  	 = "\\*OK";
 			R_RESP_ERR 	 = "\\*ERR";
 			

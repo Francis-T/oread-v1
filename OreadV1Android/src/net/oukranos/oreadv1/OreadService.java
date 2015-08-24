@@ -8,9 +8,12 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import net.oukranos.oreadv1.android.AndroidConnectivityBridge;
 import net.oukranos.oreadv1.android.AndroidInternetBridge;
+import net.oukranos.oreadv1.android.AndroidStoredDataBridge;
 import net.oukranos.oreadv1.controller.MainController;
 import net.oukranos.oreadv1.interfaces.CameraControlIntf;
 import net.oukranos.oreadv1.interfaces.CapturedImageMetaData;
@@ -113,10 +116,16 @@ public class OreadService extends Service implements MainControllerEventHandler,
 			activateService();
 			_state = ServiceState.ACTIVE;
 		}
+		
+		/* Start the device bridge interfaces */
+		if (_connBridge == null) {
+			_connBridge = AndroidConnectivityBridge.getInstance();
+		}
+		_connBridge.initialize((Context)this);
 
 		/* Update the config file if a new version exists on the remote server */
 		ConfigManager cfgMan = ConfigManager.getInstance();
-		if (cfgMan.runConfigFileUpdate(this) != Status.OK) {
+		if (cfgMan.runConfigFileUpdate((Context)this) != Status.OK) {
 			OLog.info("Config File Update Failed");
 		}
 		
@@ -589,7 +598,61 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		}
 		
 	}
+	
+	private void reloadOldWaterQualityData() {
+		String oldWaterQualityData = null;
+		
+		oldWaterQualityData = getOldWaterQualityData();
+		if (oldWaterQualityData == null) {
+			return;
+		}
+		
 
+		/* Find each sequence within the string that matches */
+		Pattern dataPattern = Pattern.compile("[-]*[0-9]+\\.*[0-9]*");
+		Matcher dataMatcher = dataPattern.matcher(oldWaterQualityData);
+		int matchCount = 0;
+		double matchValue[] = new double[5];
+		
+		while(dataMatcher.find()) {
+			int startIdx = dataMatcher.start();
+			int endIdx = dataMatcher.end();
+			
+			String matchStr = oldWaterQualityData.substring(startIdx, endIdx);
+			
+			matchValue[matchCount] = Double.parseDouble(matchStr);
+					
+			matchCount++;
+		}
+		
+		_wqData.pH 				 = matchValue[0];
+		_wqData.dissolved_oxygen = matchValue[1];
+		_wqData.conductivity 	 = matchValue[2];
+		_wqData.temperature 	 = matchValue[3];
+		_wqData.turbidity 		 = matchValue[4];
+		
+		return;
+	}
+	
+	private String getOldWaterQualityData() {
+		AndroidStoredDataBridge pDataStore 
+			= AndroidStoredDataBridge.getInstance((Context)this);
+		if (pDataStore == null) {
+			return "0.0,0.0,0.0,0.0,0.0";
+		}
+
+		String oldWaterQualityData = null;
+		oldWaterQualityData = pDataStore.get("LAST_WQ_DATA");
+		
+		if (oldWaterQualityData == null) {
+			return "0.0,0.0,0.0,0.0,0.0";
+		}
+		
+		OLog.info("Old Water Quality Data: " + oldWaterQualityData);
+		
+		return oldWaterQualityData;
+	}
+	
 	/**********************************************************************/
 	/**  API endpoint                                                    **/
 	/**********************************************************************/
@@ -598,6 +661,7 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		@Override
 		public OreadServiceWaterQualityData getData() throws RemoteException {
 			synchronized (_wqDataLock) {
+				reloadOldWaterQualityData();
 				return _wqData;
 			}
 		}

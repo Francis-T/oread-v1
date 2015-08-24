@@ -86,7 +86,7 @@ public class SiteDeviceImage implements JsonEncodableData, HttpEncodableData {
 	}
 
 	@Override
-	public String encodeToJson() {
+	public String encodeToJsonString() {
 		JSONObject request = encodeToJsonObject();
 		if (request == null) {
 			return "";
@@ -106,13 +106,13 @@ public class SiteDeviceImage implements JsonEncodableData, HttpEncodableData {
 			
 			JSONArray reportDataArr = new JSONArray();
 			for (SiteDeviceReportData rd : _reportDataList) {
-				reportDataArr.put(rd.encodeToJson());
+				reportDataArr.put(rd.encodeToJsonObject());
 			}
 			request.put("reportData", reportDataArr);
 
 			JSONArray errDataArr = new JSONArray();
 			for (SiteDeviceErrorData ed : _errorDataList) {
-				errDataArr.put(ed.encodeToJson());
+				errDataArr.put(ed.encodeToJsonObject());
 			}
 			request.putOpt("errorData", errDataArr);
 			

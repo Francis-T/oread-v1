@@ -141,36 +141,16 @@ public abstract class Sensor {
 		}
 		final String dataStr = new String(data).trim();
 		
+		/* Check for the response prefix */
 		if (dataStr.contains(R_RESP_PREF) == false) {
 			OLog.err("Parsing failed for " + this.getName() + ": Response prefix not found!");
 			return Status.FAILED;
 		}
 		
 		/* Check if we've received data */
-		if (dataStr.matches(R_RESP_PREF + R_RESP_DATA) == true) {
-			Pattern dataPattern = Pattern.compile(R_DATA_PART);
-			Matcher dataMatcher = dataPattern.matcher(dataStr);
-			
-			int matchCount = 0;
-			while(dataMatcher.find()) {
-				int startIdx = dataMatcher.start();
-				int endIdx = dataMatcher.end();
-				
-				matchCount++;
-				
-				String matchStr = dataStr.substring(startIdx, endIdx);
-				OLog.info("Found match: " + matchStr);
-				
-				/* Handle the parsed data based on the subclass implementation */
-				this.handleParsedData(container, matchCount, matchStr);
-				
-				/* Capture only up to three data matches */
-				if (matchCount == 3) {
-					break;
-				}
-			}
-		} else {
-			OLog.warn(this.getName() + " input does not match read params");
+		if (matchResponse(container, dataStr) != Status.OK) {
+			OLog.err("Parsing failed for " + this.getName() + ": Response not matched");
+			return Status.FAILED;
 		}
 		
 		if (dataStr.contains(R_RESP_PREF + R_RESP_OK) == true) {
@@ -214,6 +194,64 @@ public abstract class Sensor {
 	}
 	
 	protected abstract void handleParsedData(WaterQualityData container, int count, String match);
+	
+	private Status matchResponse(WaterQualityData container, String response) {
+		/* Find each sequence within the string that matches the valid 
+		 *  response pattern */
+		Pattern respPattern = Pattern.compile(R_RESP_PREF + R_RESP_DATA);
+		Matcher respMatcher = respPattern.matcher(response);
+		int matchCount = 0;
+		while(respMatcher.find()) {
+			int startIdx = respMatcher.start();
+			int endIdx = respMatcher.end();
+			
+			matchCount++;
+			
+			String matchStr = response.substring(startIdx, endIdx);
+			if (matchData(container, matchStr) != Status.OK) {
+				return Status.FAILED;
+			}
+			
+			OLog.info("Found response match: " + matchStr);
+		}
+		
+		/* If there are no matches, return a failure status */
+		if (matchCount == 0) {
+			OLog.warn(this.getName() + " input does not match read params");
+			return Status.FAILED;
+		}
+		
+		return Status.OK;
+	}
+	
+	private Status matchData(WaterQualityData container, String data) {
+		/* Find each sequence within the string that matches the valid 
+		 *  response pattern */
+		Pattern dataPattern = Pattern.compile(R_DATA_PART);
+		Matcher dataMatcher = dataPattern.matcher(data);
+		int matchCount = 0;
+		while(dataMatcher.find()) {
+			int startIdx = dataMatcher.start();
+			int endIdx = dataMatcher.end();
+			
+			matchCount++;
+			
+			String matchStr = data.substring(startIdx, endIdx);
+			
+			/* Handle the parsed data based on the subclass implementation */
+			this.handleParsedData(container, matchCount, matchStr);
+			
+			OLog.info("Found data match: " + matchStr);
+		}
+		
+		/* If there are no matches, return a failure status */
+		if (matchCount == 0) {
+			OLog.warn(this.getName() + " input does not have valid data");
+			return Status.FAILED;
+		}
+		
+		return Status.OK;
+	}
 
 
 	/*************************/

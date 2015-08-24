@@ -380,6 +380,10 @@ public class NetworkController extends AbstractController {
 			OLog.err("HttpResponse Error: " + statusCode + " - " + statusMsg);
 			return Status.FAILED;
 		}
+		
+		if (statusCode != 200) {
+			OLog.warn("HttpResponse Unexpected: " + statusCode + " - " + statusMsg);
+		}
 
 		OLog.info("Sent data to " + url);
 

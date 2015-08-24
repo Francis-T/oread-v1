@@ -113,6 +113,27 @@ public class FragmentReadings extends Fragment {
 		/* Initialize the field mappings */
 		initializeFieldMap(_viewRef);
 		
+		WaterQualityData data = null;
+		
+		if (_serviceAPI == null) {
+			OLog.err("Service unavailable");
+			return _viewRef;
+		}
+		
+		/* Attempt to retrieve the data from the service */
+		try {
+			data = _serviceAPI.getData();
+		} catch (RemoteException e) {
+			OLog.err("Failed to get data: " + e.getMessage());
+			return _viewRef;
+		} catch (Exception e) {
+			OLog.err("Failed to get data: " + e.getMessage());
+			return _viewRef;
+		}
+		
+		/* Start a field map update task */
+		new FieldMapUpdateTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, data);
+		
 		return _viewRef;
 	}
 

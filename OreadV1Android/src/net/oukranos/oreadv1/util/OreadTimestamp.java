@@ -18,7 +18,7 @@ public class OreadTimestamp {
 		Calendar calInstance = Calendar.getInstance(TimeZone.getTimeZone("GMT+8"));
 		
 		int year = calInstance.get(Calendar.YEAR);
-		int month = calInstance.get(Calendar.MONTH);
+		int month = calInstance.get(Calendar.MONTH) + 1;
 		int day = calInstance.get(Calendar.DAY_OF_MONTH);
 
 		String yearStr = (year < 10 ? "0" + Integer.toString(year) : Integer.toString(year));
