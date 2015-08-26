@@ -110,7 +110,7 @@ public class DatabaseController extends AbstractController {
 			this.storeWaterQualityData(paramStr);
 
 		} else if (shortCmdStr.equals("storeAsHgCaptureData") == true) {
-			/* TODO */
+			this.storeChemPresenceData(paramStr);
 
 		} else if (shortCmdStr.equals("startQuery") == true) {
 			this.startQuery(paramStr);
@@ -570,7 +570,9 @@ public class DatabaseController extends AbstractController {
 		values.put(CachedData.COL_TYPE, type);
 		values.put(CachedData.COL_SUBTYPE, data.getType());
 
-		db.insert(CachedData.TABLE_NAME, "null", values);
+		long recordNum = db.insert(CachedData.TABLE_NAME, "null", values);
+		
+		writeInfo("Data successfully added to database (Record#" + recordNum + ")" );
 
 		return Status.OK;
 	}

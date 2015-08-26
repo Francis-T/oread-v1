@@ -336,7 +336,10 @@ public class MainController extends AbstractController implements MethodEvaluato
 			this.writeInfo("Command Performed: Updated Cached Data");
 		} else if (shortCmdStr.equals("unsendData")) {
 			unsendSentData();
-			this.writeInfo("Command Performed: Updated Cached Data");
+			this.writeInfo("Command Performed: Refreshed Cached Data Sent Status");
+		} else if (shortCmdStr.equals("unsendImages")) {
+			unsendSentImages();
+			this.writeInfo("Command Performed: Refreshed Cached Images Sent Status");
 		/** XXX ******************** XXX **/
 		/** XXX END Testing Commands XXX **/
 		/** XXX ******************** XXX **/
@@ -403,7 +406,13 @@ public class MainController extends AbstractController implements MethodEvaluato
 				result = "false";
 			}
 			
-			return DataStoreObject.createNewInstance("isWaterQualityDataAvailable", "string", result);
+			/* XXX */
+			if ( !(result.equalsIgnoreCase("false") || 
+					result.equalsIgnoreCase("true")) ) {
+				result = "false";
+			}
+			
+			return DataStoreObject.createNewInstance("isImageCaptureAvailable", "string", result);
 		}
 		
 		
@@ -904,21 +913,24 @@ public class MainController extends AbstractController implements MethodEvaluato
 			return;
 		}
 		
-		OLog.info("Sending data to server: \n" + siteData.encodeToJsonString());
-//		if (_networkController != null) {
-//			String url = null;
-//			String data = null;
-//			
-//			try {
-//				url = (String) _mainInfo.getDataStore()
-//						.retrieveObject("live_data_url");
-//				_networkController.send(url, siteData);
-//			} catch (Exception e) {
-//				OLog.err("Exception occurred: " + e.getMessage());
-//			}
-//		}
+//		OLog.info("Sending data to server: \n" + siteData.encodeToJsonString());
+		if (_networkController != null) {
+			String url = null;
+			String data = null;
+			
+			try {
+				url = (String) _mainInfo.getDataStore()
+						.retrieveObject("live_data_url");
+				_networkController.send(url, siteData);
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+			}
+		}
+
+		/* TODO Wait for a bit... */
+		/* TODO ...Then retrieve the Network Subcontroller's last http response status code  */ 
 		
-		/* If successfully sent to the server, update the records */
+		/* TODO If successfully sent to the server, update the records */
 		for (Integer recId : recIdList) {
 			_databaseController.updateRecord(recId.toString(), true);
 		}
@@ -949,7 +961,7 @@ public class MainController extends AbstractController implements MethodEvaluato
 		}
 
 		/* Start querying the database */
-		if (_databaseController.startQuery("image") != Status.OK) {
+		if (_databaseController.startQuery("chem_presence") != Status.OK) {
 			return;
 		}
 		
@@ -982,16 +994,31 @@ public class MainController extends AbstractController implements MethodEvaluato
 		siteImage.setCaptureFile(fileMetaData[0], fileMetaData[1]);
 		siteImage.addReportData(new SiteDeviceReportData("photo", "", 0f, ""));
 		
-		/* TODO Do something with the accumulated report data (e.g. send to the server) */
+		/* Do something with the accumulated image data (e.g. send to the server) */
 		OLog.info("Sending image to server");
+		if (_networkController != null) {
+			String url = null;
+			String data = null;
+			
+			try {
+				url = (String) _mainInfo.getDataStore()
+						.retrieveObject("live_image_url");
+				_networkController.send(url, siteImage);
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+			}
+		}
 		
-		/* If successfully sent to the server, update the records */
+		/* TODO Wait for a bit... */
+		/* TODO ...Then retrieve the Network Subcontroller's last http response status code  */ 
+		
+		/* TODO If successfully sent to the server, update the records */
 		String recId = Integer.toString(crDataTemp.getId());
 		_databaseController.updateRecord(recId, true);
 		
 		/* Check the database if more unsent data remains;
 		 * 	otherwise, update the persistent data flag to "false" */
-		if (_databaseController.hasUnsentRecords("image") == false) {		
+		if (_databaseController.hasUnsentRecords("chem_presence") == false) {		
 			/* Add persistent data flag for unsent water quality data availability */
 			AndroidStoredDataBridge pDataStore 
 				= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
@@ -1042,6 +1069,22 @@ public class MainController extends AbstractController implements MethodEvaluato
 			return;
 		}
 		pDataStore.put("WQ_DATA_AVAILABLE", "true");
+		
+		return;
+	}
+	
+	private void unsendSentImages() {
+		for (int i = 201; i < 220; i++) {
+			_databaseController.updateRecord(Integer.toString(i), false);
+		}		
+		
+		/* Add persistent data flag for unsent water quality data availability */
+		AndroidStoredDataBridge pDataStore 
+			= AndroidStoredDataBridge.getInstance(_mainInfo.getContext());
+		if (pDataStore == null) {
+			return;
+		}
+		pDataStore.put("IMG_CAPTURE_AVAILABLE", "true");
 		
 		return;
 	}
