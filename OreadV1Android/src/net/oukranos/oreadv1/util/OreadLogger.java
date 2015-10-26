@@ -53,6 +53,15 @@ public class OreadLogger {
 		Log.w(methodName , logMsg);
 		return;
 	}
+
+	public void dbg(String message) {
+		String methodName = "DEBUG";
+		String logMsg = ("Debug: " + message);
+		logToFile(logMsg);
+		logToStack(logMsg);
+		Log.d(methodName , logMsg);
+		return;
+	}
 	
 	public String getLastLogMessages(int maxLines) {
 		String lastLogs = "";

@@ -255,6 +255,10 @@ public class Configuration {
     	return this._conditionList;
     }
     
+    public List<Procedure> getProcedureList() {
+    	return this._procedureList;
+    }
+    
     public String toString() {
     	String configStr = "configuration {\n";
     	for (Module m : this._moduleList) {

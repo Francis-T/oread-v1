@@ -2,14 +2,12 @@ package net.oukranos.oreadv1.android;
 
 import java.io.IOException;
 
-import net.oukranos.oreadv1.interfaces.ConnectivityBridgeIntf;
-import net.oukranos.oreadv1.interfaces.InternetBridgeIntf;
+import net.oukranos.oreadv1.interfaces.bridge.IConnectivityBridge;
+import net.oukranos.oreadv1.interfaces.bridge.IInternetBridge;
 import net.oukranos.oreadv1.types.SendableData;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OreadLogger;
 
 import org.apache.http.HttpResponse;
-import org.apache.http.ParseException;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
@@ -18,18 +16,12 @@ import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.util.EntityUtils;
 
-import android.content.Context;
-
-public class AndroidInternetBridge implements InternetBridgeIntf {
-	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
-	
+public class AndroidInternetBridge extends AndroidBridgeImpl implements IInternetBridge {
 	private static final int HTTP_ERROR_CODE_THRESHOLD = 300;
 	
 	private static AndroidInternetBridge _androidInternetBridge = null;
 	private boolean _sendThreadRunning = false;
 	
-	private Context _context = null;
 	private byte[] _lastHttpResponse = null;
 	private static final HttpClient _httpClient = new DefaultHttpClient();
 
@@ -43,14 +35,27 @@ public class AndroidInternetBridge implements InternetBridgeIntf {
 		}
 		return _androidInternetBridge;
 	}
+
+	@Override
+	public String getId() {
+		return "internet";
+	}
+
+	@Override
+	public String getPlatform() {
+		return "android";
+	}
 	
 	@Override
 	public Status initialize(Object initObject) {
-		if (_context == null) {
-			_context = (Context) initObject;
+		/* Attempt to load the initializer object */
+		/*  Note: This method is in AndroidBridgeImpl */
+		if (loadInitializer(initObject) != Status.OK) {
+			OLog.err("Failed to initialize " + getPlatform() + "." + getId());
+			return Status.FAILED;
 		}
 		
-		return null;
+		return Status.OK;
 	}
 
 	private SendThreadTask _sendTask = null;
@@ -213,11 +218,18 @@ public class AndroidInternetBridge implements InternetBridgeIntf {
 		public void run() {
 			OLog.info("Send task started");
 
-			/* Check our connectivity */
-			ConnectivityBridgeIntf connBridge = null;
-			connBridge = AndroidConnectivityBridge.getInstance();
-			connBridge.initialize((Object)_context);
-			
+			/* Obtain a reference to the ConnBridge */
+			IConnectivityBridge connBridge 
+				= (IConnectivityBridge) _mainInfo
+					.getFeature("connectivity");
+			if (connBridge.isReady() == false) {
+				if (connBridge.initialize(_mainInfo) != Status.OK) {
+					OLog.err("Failed to initialize ConnBridge");
+					return;
+				}
+			}
+
+			/* Check network connectivity */
 			if (connBridge.isConnected() == false) {
 				OLog.err("Not connected");
 				

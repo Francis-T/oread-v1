@@ -12,14 +12,14 @@ public class SiteDeviceReportData implements JsonEncodableData {
 	
 	private long _dateRecorded = 0;
 	private String _type = "";
-	private String _units = "";
+	private String _readCat = "";
 	private float _value = 0.0f;
 	private String _errMsg = "";
 	
-	public SiteDeviceReportData(String type, String units, float value, String err) {
+	public SiteDeviceReportData(String type, String readCat, float value, String err) {
 		_dateRecorded = System.currentTimeMillis();
 		_type = type;
-		_units = units;
+		_readCat = readCat;
 		_value = value;
 		_errMsg = err;
 		return;
@@ -43,13 +43,13 @@ public class SiteDeviceReportData implements JsonEncodableData {
 		return this._type;
 	}
 
-	public void setUnits(String units) {
-		_units = units;
+	public void setReadCat(String readCat) {
+		_readCat = readCat;
 		return;
 	}
 	
-	public String getUnits() {
-		return this._units;
+	public String getReadCat() {
+		return this._readCat;
 	}
 
 	public void setValue(float value) {
@@ -79,11 +79,11 @@ public class SiteDeviceReportData implements JsonEncodableData {
 			return Status.FAILED;
 		}
 		
-		OLog.info("Decoding JSON: \n" + jsonStr);
+		//OLog.info("Decoding JSON: \n" + jsonStr);
 		
 		long timestamp = 0;
 		String type = "";
-		String units = "";
+		String readCat = "";
 		float value = 0.0f;
 		String errMsg = "";
 		
@@ -93,7 +93,7 @@ public class SiteDeviceReportData implements JsonEncodableData {
 		try {
 			timestamp 	= jsonObject.getLong("dateRecorded");
 			type 		= jsonObject.getString("readingOf");
-			units 		= jsonObject.getString("units");
+			readCat 	= jsonObject.getString("readingCat");
 			value  		= (float)(jsonObject.getDouble("value"));
 			errMsg		= jsonObject.getString("errMsg");
 			
@@ -105,7 +105,7 @@ public class SiteDeviceReportData implements JsonEncodableData {
 		/* Set the actual values */
 		this.setTimestamp(timestamp);
 		this.setType(type);
-		this.setUnits(units);
+		this.setReadCat(readCat);
 		this.setValue(value);
 		this.setErrMsg(errMsg);
 		
@@ -118,14 +118,14 @@ public class SiteDeviceReportData implements JsonEncodableData {
 		if (request == null) {
 			return "";
 		}
-		OLog.info("JSON Encoded Data:");
-		OLog.info("    dateRecorded: " + this.getTimestamp());
-		OLog.info("    readingOf: " + this._type);
-		OLog.info("    units: " + this._units);
-		OLog.info("    value: " + this._value);
-		OLog.info("    errMsg: " + this._errMsg);
-
-		OLog.info("Sub(+1)-level JSON Object: " + request.toString());
+//		OLog.info("JSON Encoded Data:");
+//		OLog.info("    dateRecorded: " + this.getTimestamp());
+//		OLog.info("    readingOf: " + this._type);
+//		OLog.info("    units: " + this._units);
+//		OLog.info("    value: " + this._value);
+//		OLog.info("    errMsg: " + this._errMsg);
+//
+//		OLog.info("Sub(+1)-level JSON Object: " + request.toString());
 		return request.toString();
 	}
 
@@ -135,14 +135,14 @@ public class SiteDeviceReportData implements JsonEncodableData {
 		try {
 			request.put("dateRecorded", this.getTimestamp());
 			request.put("readingOf", 	this._type);
-			request.put("units", 		this._units);
+			request.put("readingCat", 	this._readCat);
 			request.put("value", 		this._value);
 			request.put("errMsg", 		this._errMsg);
 		} catch (JSONException e) {
 			System.out.println("Encode data to JSON failed");
 			return null;
 		}
-		OLog.info("Sub-level JSON Object: " + request.toString());
+//		OLog.info("Sub-level JSON Object: " + request.toString());
 		
 		return request;
 	}

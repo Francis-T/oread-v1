@@ -1,9 +1,9 @@
 package net.oukranos.oreadv1.controller;
 
 import android.content.ContentValues;
-import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+
 import net.oukranos.oreadv1.database.SimpleDbHelper;
 import net.oukranos.oreadv1.database.SimpleDbContract.CachedData;
 import net.oukranos.oreadv1.interfaces.AbstractController;
@@ -17,23 +17,16 @@ import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.SiteDeviceReportData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
-import net.oukranos.oreadv1.util.OreadLogger;
 
 public class DatabaseController extends AbstractController {
-	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
-
 	private static DatabaseController _databaseController = null;
-	private MainControllerInfo _mainInfo = null;
 
 	private SimpleDbHelper _dbHelper = null;
-	private Context _parentContext = null;
 
 	private SQLiteDatabase _activeDb = null;
 	private Cursor _activeCursor = null;
 
 	private DatabaseController(MainControllerInfo mainInfo) {
-		this._mainInfo = mainInfo;
 		this.setType("storage");
 		this.setName("db");
 		return;
@@ -41,19 +34,16 @@ public class DatabaseController extends AbstractController {
 
 	public static DatabaseController getInstance(MainControllerInfo mainInfo) {
 		if (mainInfo == null) {
-			OLog.err("Invalid parameter");
+			OLog.err("Invalid input parameter/s in " +
+					"DatabaseController.getInstance()");
 			return null;
 		}
-
-		// /* Check that the main controller uses this subcontroller */
-		// if (mainInfo.getSubController("db", "storage") == null) {
-		// OLog.err("No matching subcontroller found");
-		// return null;
-		// }
 
 		if (_databaseController == null) {
 			_databaseController = new DatabaseController(mainInfo);
 		}
+		
+		_databaseController._mainInfo = mainInfo;
 
 		return _databaseController;
 	}
@@ -62,28 +52,25 @@ public class DatabaseController extends AbstractController {
 	/** Public Methods **/
 	/********************/
 	@Override
-	public Status initialize(Object initializer) {
-		// if (initializer == null) {
-		// writeErr("Context is null");
-		// return Status.FAILED;
-		// }
-		//
-		// String initObjClass = initializer.getClass().getSimpleName();
-		// if (initObjClass.equals("Context") == false) {
-		// writeErr("Invalid initializer object (expected Context): "
-		// + initObjClass);
-		// return Status.FAILED;
-		// }
-
-		/* Save the parent context */
-		_parentContext = (Context) _mainInfo.getContext();
-
+	public Status initialize(Object initObject) {
 		/* Instantiate the DB Helper */
 		if (_dbHelper == null) {
-			_dbHelper = new SimpleDbHelper(_parentContext);
+			_dbHelper = new SimpleDbHelper(_mainInfo.getContext());
 		}
 
 		writeInfo("DatabaseController Initialized");
+		return Status.OK;
+	}
+
+	@Override
+	public Status start() {
+		// TODO Auto-generated method stub
+		return Status.OK;
+	}
+
+	@Override
+	public Status stop() {
+		// TODO Auto-generated method stub
 		return Status.OK;
 	}
 
@@ -296,6 +283,8 @@ public class DatabaseController extends AbstractController {
 
 		/* Move the cursor to the next record */
 		_activeCursor.moveToNext();
+		
+		writeInfo("Report Data Contents: " + data.toString());
 
 		return Status.OK;
 	}
@@ -362,8 +351,8 @@ public class DatabaseController extends AbstractController {
 		String filename = d.getCaptureFileName();
 		String filepath = d.getCaptureFilePath();
 
-		SiteDeviceReportData reportData = new SiteDeviceReportData("photo", "",
-				0.0f, "OK");
+		SiteDeviceReportData reportData 
+			= new SiteDeviceReportData("Arsenic", "Water", 0.0f, "OK");
 
 		this.insertCachedData(db, reportData, "chem_presence", filename + ","
 				+ filepath);
@@ -421,22 +410,22 @@ public class DatabaseController extends AbstractController {
 		writeInfo("Inserting data...");
 		SiteDeviceReportData reportData = null;
 
-		reportData = new SiteDeviceReportData("pH", "", (float) (d.pH), "OK");
+		reportData = new SiteDeviceReportData("pH", "Water", (float) (d.pH), "OK");
 		this.insertCachedData(db, reportData, "h2o_quality");
 
-		reportData = new SiteDeviceReportData("DO2", "mg/L",
+		reportData = new SiteDeviceReportData("DO2", "Water",
 				(float) (d.dissolved_oxygen), "OK");
 		this.insertCachedData(db, reportData, "h2o_quality");
 
-		reportData = new SiteDeviceReportData("Conductivity", "uS/cm",
+		reportData = new SiteDeviceReportData("Conductivity", "Water",
 				(float) (d.conductivity), "OK");
 		this.insertCachedData(db, reportData, "h2o_quality");
 
-		reportData = new SiteDeviceReportData("Temperature", "deg C",
+		reportData = new SiteDeviceReportData("Temperature", "Water",
 				(float) (d.temperature), "OK");
 		this.insertCachedData(db, reportData, "h2o_quality");
 
-		reportData = new SiteDeviceReportData("Turbidity", "NTU",
+		reportData = new SiteDeviceReportData("Turbidity", "Water",
 				(float) (d.turbidity), "OK");
 		this.insertCachedData(db, reportData, "h2o_quality");
 
@@ -535,8 +524,8 @@ public class DatabaseController extends AbstractController {
 	public boolean hasUnsentRecords(String type) {
 		startQuery(type);
 
-		/* TODO THIS DOES NOT WORK!!!! */
-		if (_activeCursor.isAfterLast()) {
+		/* TODO TESTING... */
+		if (_activeCursor.getCount() <= 0) {
 			this.stopQuery();
 			return false;
 		}
@@ -572,6 +561,7 @@ public class DatabaseController extends AbstractController {
 
 		long recordNum = db.insert(CachedData.TABLE_NAME, "null", values);
 		
+		writeInfo("Insert Report Data: " + data.encodeToJsonString() + ", " + type + ", " + customDataField);
 		writeInfo("Data successfully added to database (Record#" + recordNum + ")" );
 
 		return Status.OK;

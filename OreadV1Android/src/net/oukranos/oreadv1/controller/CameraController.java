@@ -4,21 +4,17 @@ import net.oukranos.oreadv1.interfaces.AbstractController;
 import net.oukranos.oreadv1.interfaces.CameraControlEventHandler;
 import net.oukranos.oreadv1.interfaces.CameraControlIntf;
 import net.oukranos.oreadv1.interfaces.CapturedImageMetaData;
+import net.oukranos.oreadv1.interfaces.IPersistentDataBridge;
 import net.oukranos.oreadv1.types.CameraTaskType;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.DataStore;
 import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OreadLogger;
 
 public class CameraController extends AbstractController implements CameraControlEventHandler {
-	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
-	
 	private static final long MAX_AWAIT_CAMERA_RESPONSE_TIMEOUT = 5000;
 	private static CameraController _cameraController = null;
-	private MainControllerInfo _mainInfo = null;
 	
 	private CapturedImageMetaData _captureFileData = null;
 	private CameraControlIntf _cameraInterface = null;
@@ -28,9 +24,8 @@ public class CameraController extends AbstractController implements CameraContro
 	/** Initializer Methods **/
 	/*************************/
 	private CameraController(MainControllerInfo mainInfo) {
-		this._mainInfo = mainInfo;
 		this._captureFileData = null;
-		this._cameraInterface = (CameraControlIntf)(this._mainInfo.getContext()); // TODO assume that parent context will be the intf
+		
 		this.setState(ControllerState.UNKNOWN);
 
 		this.setType("sensors");
@@ -40,18 +35,17 @@ public class CameraController extends AbstractController implements CameraContro
 	
 	public static CameraController getInstance(MainControllerInfo mainInfo) {
 		if (mainInfo == null) {
-			OLog.err("Main controller info uninitialized or unavailable");
-			return null;
-		}
-		
-		if (mainInfo.getContext() == null) {
-			OLog.err("Context object uninitialized or unavailable");
+			OLog.err("Invalid input parameter/s" +
+					" in CameraController.getInstance()");
 			return null;
 		}
 		
 		if (_cameraController == null) {
 			_cameraController = new CameraController(mainInfo);
 		}
+		
+		_cameraController._mainInfo = mainInfo;
+		_cameraController.setCameraControlIntf(mainInfo.getContext());
 		
 		return _cameraController;
 	}
@@ -64,7 +58,7 @@ public class CameraController extends AbstractController implements CameraContro
 		if ( (this.getState() != ControllerState.INACTIVE) &&
 			   (this.getState() != ControllerState.UNKNOWN) ) {
 			OLog.warn("CameraController already started");
-			return Status.ALREADY_STARTED;
+			return Status.OK;
 		}
 		
 		if ( _cameraInterface.triggerCameraInitialize() != Status.OK ) {
@@ -76,6 +70,18 @@ public class CameraController extends AbstractController implements CameraContro
 			
 		this.setState(ControllerState.READY);
 		
+		return Status.OK;
+	}
+
+	@Override
+	public Status start() {
+		// TODO Auto-generated method stub
+		return Status.OK;
+	}
+
+	@Override
+	public Status stop() {
+		// TODO Auto-generated method stub
 		return Status.OK;
 	}
 
@@ -106,8 +112,20 @@ public class CameraController extends AbstractController implements CameraContro
 				this.writeErr("Data store uninitialized or unavailable");
 				return this.getControllerStatus();
 			}
+
+			OLog.info("Retrieving from: " + cdImg.hashCode());
 			
-			this.captureImage(cdImg);
+			if (this.captureImage(cdImg) == Status.OK) {
+				IPersistentDataBridge pDataStore = getPersistentDataBridge();
+				pDataStore.remove("ASHG_CAPTURE_OK");
+				pDataStore.put("ASHG_CAPTURE_OK", "false");
+			}
+		} else if (shortCmdStr.equals("start") == true) {
+			this.writeInfo("Command Performed: Start");
+			
+		} else if (shortCmdStr.equals("stop") == true) {
+			this.writeInfo("Command Performed: Stop");
+			
 		} else {
 			this.writeErr("Unknown or invalid command: " + shortCmdStr);
 		}
@@ -135,7 +153,6 @@ public class CameraController extends AbstractController implements CameraContro
 			}
 		}
 
-
 		if ( _cameraInterface.triggerCameraShutdown() != Status.OK ) {
 			return Status.FAILED;
 		}
@@ -153,7 +170,8 @@ public class CameraController extends AbstractController implements CameraContro
 	/********************/
 	public Status captureImage(CapturedImageMetaData captureDataBuffer) {
 		if (captureDataBuffer == null) {
-			OLog.err("Invalid input parameter");
+			OLog.err("Invalid input parameter/s" +
+					" in CameraController.captureImage()");
 			return Status.FAILED;
 		}
 		
@@ -206,5 +224,16 @@ public class CameraController extends AbstractController implements CameraContro
 
 		return;
 	}
+	
+	private void setCameraControlIntf(Object controlIntf) {
+		/* TODO The camera interface still has to refer to OreadService due
+		 *  	 to limitations set by Android. This is Ok for now, but we
+		 *  	 need to replace it eventually */
+		this._cameraInterface 
+			= (CameraControlIntf) controlIntf;
+		
+		return;
+	}
+	
 }
 

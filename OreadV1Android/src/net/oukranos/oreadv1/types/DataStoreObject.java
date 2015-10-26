@@ -19,12 +19,14 @@ public class DataStoreObject {
 	
 	public static DataStoreObject createNewInstance(String id, String type, Object obj) {
 		if ((id == null) || (type == null) || (obj == null)) {
-			OLog.err("Invalid input parameter/s");
+			OLog.err("Invalid input parameter/s" +
+					" in DataStoreObject.createNewInstance()");
 			return null;
 		}
 		
 		if (id.isEmpty() || type.isEmpty()) {
-			OLog.err("Invalid input parameter/s");
+			OLog.err("Blank input parameter/s" +
+					" in DataStoreObject.createNewInstance()");
 			return null;
 		}
 		
@@ -41,5 +43,10 @@ public class DataStoreObject {
 	
 	public Object getObject() {
 		return this._obj;
+	}
+	
+	public Status setObject(Object newObj) {
+		this._obj = newObj;
+		return Status.OK;
 	}
 }

@@ -46,8 +46,8 @@ public class SimpleDbHelper extends SQLiteOpenHelper {
 	private static final String DB_DELETE_PERSISTENT_DATA_TABLES =
 		    "DROP TABLE IF EXISTS " + PersistentData.TABLE_NAME; 
 
-	public SimpleDbHelper(Context context) {
-		super(context, DB_NAME, null, DB_VER);
+	public SimpleDbHelper(Object initObject) {
+		super((Context) initObject, DB_NAME, null, DB_VER);
 	}
 
 	@Override

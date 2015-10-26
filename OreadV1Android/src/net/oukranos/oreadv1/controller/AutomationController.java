@@ -1,12 +1,17 @@
 package net.oukranos.oreadv1.controller;
 
+import java.lang.reflect.Constructor;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
-import android.net.NetworkInfo.State;
-
-import net.oukranos.oreadv1.android.AndroidStoredDataBridge;
+import net.oukranos.oreadv1.devices.control.AsHgAutosampler;
+import net.oukranos.oreadv1.devices.control.CuZnAutosampler;
+import net.oukranos.oreadv1.devices.control.DrainValve;
+import net.oukranos.oreadv1.devices.control.PeristalticPump;
+import net.oukranos.oreadv1.devices.control.SubmersiblePump;
 import net.oukranos.oreadv1.interfaces.AbstractController;
-import net.oukranos.oreadv1.interfaces.PersistentDataStoreIntf;
+import net.oukranos.oreadv1.interfaces.IPersistentDataBridge;
 import net.oukranos.oreadv1.interfaces.SensorEventHandler;
 import net.oukranos.oreadv1.types.ControlMechanism;
 import net.oukranos.oreadv1.types.ControlMechanism.ReceiveStatus;
@@ -14,56 +19,57 @@ import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OreadLogger;
 
-public class AutomationController extends AbstractController implements
-		SensorEventHandler {
-	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
-	
+public class AutomationController extends AbstractController implements SensorEventHandler {
 	private static AutomationController _automationController = null;
 	
 	private BluetoothController _bluetoothController = null;
 	private ControlMechanism _activeMechanism = null;
 	private Thread _automationControllerThread = null;
-	private PersistentDataStoreIntf _pDataStore = null;
+	private List<ControlMechanism> _controlDevices = null;
 	
-	private DrainValve _drainValve = null;
-	private SubmersiblePump _submersiblePump = null;
-	private PeristalticPump _peristalticPump = null;
-	private Autosampler _autosampler = null;
-	private CuZnAutosampler _cuZnAutosampler = null;
+	private Class<?> _controlDeviceClasses[] = {
+			DrainValve.class,
+			SubmersiblePump.class,
+			PeristalticPump.class,
+			AsHgAutosampler.class,
+			CuZnAutosampler.class
+	};
 
 	private byte[] _tempDataBuffer = new byte[512];
 	private boolean _isUninterruptible = false;
+	
 	/*************************/
 	/** Initializer Methods **/
 	/*************************/
-	private AutomationController(MainControllerInfo mainInfo, BluetoothController bluetooth) {
-		_bluetoothController = bluetooth;
-		_pDataStore = AndroidStoredDataBridge.getInstance(mainInfo.getContext());
+	private AutomationController() {
+		setType("device");
+		setName("fd_control");
 		
-		this.setType("device");
-		this.setName("fd_control");
 		return;
 	}
 
 	public static AutomationController getInstance(MainControllerInfo mainInfo) {
 		if (mainInfo == null) {
-			OLog.err("Main controller info uninitialized or unavailable");
+			OLog.err("Invalid input parameter/s" +
+					" in AutomationController.getInstance()");
 			return null;
 		}
 		
-		BluetoothController bluetooth = (BluetoothController) mainInfo
+		BluetoothController btController = (BluetoothController) mainInfo
 				.getSubController("bluetooth", "comm");
-		if (bluetooth == null) {
+		if (btController == null) {
 			OLog.err("No bluetooth controller available");
 			return null;
 		}
-		
+
+		/* Instantiate the AutomationController if it hasn't been done yet */
 		if (_automationController == null) {
-			_automationController = new AutomationController(mainInfo, bluetooth);
+			_automationController = new AutomationController();
 		}
+		
+		_automationController._mainInfo = mainInfo;
+		_automationController._bluetoothController = btController;
 		
 		return _automationController;
 	}
@@ -73,90 +79,211 @@ public class AutomationController extends AbstractController implements
 	/********************************/
 	@Override
 	public Status initialize(Object initializer) {
-		/* Register our event handlers */
+		/* Check the controller state prior to initialize */
+		ControllerState state = getState();
+		if (state != ControllerState.UNKNOWN) {
+			return writeErr(toString() 
+					+ " state is invalid for initialize(): " 
+					+ state.toString());
+		}
+		
+		/* Instantiate the control mechanisms */
+		Status retStatus = instantiateControlDevices();
+		if (retStatus != Status.OK) {
+			destroyControlDevices();
+			return retStatus;
+		}
+		
+		/* Set the controller state to INACTIVE */
+		setState(ControllerState.INACTIVE);
+
+		return writeInfo("AutomationController initialized");
+	}
+
+	@Override
+	public Status start() {
+		/* Check the controller state prior to start */
+		ControllerState state = getState();
+		if (state != ControllerState.INACTIVE) {
+			return writeErr(toString() 
+					+ " state is invalid for start(): " 
+					+ state.toString());
+		}
+		
+		if (_bluetoothController == null) {
+			return writeErr("No BluetoothController assigned for " 
+					+ toString());
+		}
+		
+		/* Register as a BluetoothController event handler */
 		_bluetoothController.registerEventHandler(this);
+		
+		/* Set the bluetooth controller for the control devices */
+		setBluetoothControllerForDevices(_bluetoothController);
 
+		/* Set the persistent data bridge for the control devices */
+		IPersistentDataBridge pDataStore = getPersistentDataBridge();
+		if (pDataStore != null) {
+			setPersistentDataBridgeForDevices(pDataStore);
+		}
+		
 		/* Initialize the control devices */
-		if (_drainValve == null) {
-			_drainValve = new DrainValve(_bluetoothController);
-		}
-
-		if (_submersiblePump == null) {
-			_submersiblePump = new SubmersiblePump(_bluetoothController);
-		}
-
-		if (_peristalticPump == null) {
-			_peristalticPump = new PeristalticPump(_bluetoothController);
+		Status retStatus = initializeControlDevices();
+		if (retStatus != Status.OK) {
+			destroyControlDevices();
+			return retStatus;
 		}
 		
-		if (_autosampler == null) {
-			_autosampler = new Autosampler(_bluetoothController);
-		}
-		
-		if (_cuZnAutosampler == null) {
-			_cuZnAutosampler = new CuZnAutosampler(_bluetoothController);
-		}
+		setState(ControllerState.READY);
 
-		this.setState(ControllerState.READY);
-		return Status.OK;
+		return writeInfo("AutomationController started");
 	}
 
 	@Override
 	public ControllerStatus performCommand(String cmdStr, String paramStr) {
 		/* Check the command string*/
 		if ( verifyCommand(cmdStr) != Status.OK ) {
-			return this.getControllerStatus();
+			return getControllerStatus();
 		}
 		
 		/* Extract the command only */
 		String shortCmdStr = extractCommand(cmdStr);
 		if (shortCmdStr == null) {
-			return this.getControllerStatus();
+			return getControllerStatus();
 		}
 		
 		/* Check which command to perform */
 		if (shortCmdStr.equals("openValve") == true) {
-			this.performDeviceActivate(_drainValve, paramStr);
+			activateDevice(
+					getDevice("Drain Valve"), 
+					paramStr 
+			);
+			
 		} else if (shortCmdStr.equals("closeValve") == true) {
-			this.performDeviceDeactivate(_drainValve, paramStr);
+			deactivateDevice(
+					getDevice("Drain Valve"), 
+					paramStr
+			);
+			
 		} else if (shortCmdStr.equals("startPump") == true) {
-			this.performDeviceActivate(_submersiblePump, paramStr);
+			activateDevice(
+					getDevice("Submersible Pump"), 
+					paramStr
+			);
+			
 		} else if (shortCmdStr.equals("stopPump") == true) {
-			this.performDeviceDeactivate(_submersiblePump, paramStr);
+			deactivateDevice(
+					getDevice("Submersible Pump"), 
+					paramStr
+			);
+			
 		} else if (shortCmdStr.equals("startSolutionDispense") == true) {
-			this.performDeviceActivate(_peristalticPump, paramStr);
+			activateDevice(
+					getDevice("Peristaltic Pump"), 
+					paramStr
+			);
+			
 		} else if (shortCmdStr.equals("stopSolutionDispense") == true) {
-			this.performDeviceDeactivate(_peristalticPump, paramStr);
+			deactivateDevice(
+					getDevice("Peristaltic Pump"), 
+					paramStr
+			);
+			
 		} else if (shortCmdStr.equals("startAutosampler") == true) {
-			this.performDeviceActivate(_autosampler, paramStr);
+			activateDevice(
+					getDevice("AsHg Autosampler"),
+					paramStr
+			);
+			
+		} else if (shortCmdStr.equals("pollAutosampler") == true) {
+			pollDevice(
+					getDevice("AsHg Autosampler")
+			);
+			
 		} else if (shortCmdStr.equals("stopAutosampler") == true) {
-			this.performDeviceDeactivate(_autosampler, paramStr);
+			deactivateDevice(
+					getDevice("AsHg Autosampler"), 
+					paramStr
+			);
+			
 		} else if (shortCmdStr.equals("readFromCuZnAutosampler") == true) {
-			this.performDeviceActivate(_cuZnAutosampler, paramStr);
+			activateDevice(
+					getDevice("CuZn Autosampler"), 
+					paramStr
+			);
+			
 		} else if (shortCmdStr.equals("stopCuZnAutosampler") == true) {
-			this.performDeviceDeactivate(_cuZnAutosampler, paramStr);
+			deactivateDevice(
+					getDevice("CuZn Autosampler"), 
+					paramStr
+			);
+			
 		} else if (shortCmdStr.equals("start") == true) {
-			this.writeInfo("Started");
+			if (start() == Status.OK) {
+				writeInfo("Started");
+			}
+			
+		} else if (shortCmdStr.equals("stop") == true) {
+			if (stop() == Status.OK) {
+				writeInfo("Stopped");
+			}
+			
 		} else {
-			this.writeErr("Unknown or invalid command: " + shortCmdStr);
+			writeErr("Unknown or invalid command: " + shortCmdStr);
 		}
 		
-		return this.getControllerStatus();
+		return getControllerStatus();
 	}
-
+	
 	@Override
-	public Status destroy() {
-		OLog.info("AutomationController destroy() invoked.");
-		this.setState(ControllerState.UNKNOWN);
-		_bluetoothController.unregisterEventHandler(this);
+	public Status stop() {
+		/* Check the controller state prior to stop */
+		ControllerState state = getState();
+		if ((state != ControllerState.READY) &&
+				(state != ControllerState.ACTIVE) &&
+				(state != ControllerState.BUSY) ) {
+			return writeErr(toString() 
+					+ " state is invalid for stop(): " 
+					+ state.toString());
+		}
 		
 		/* Interrupt the waiting automation controller thread */
 		if ((_automationControllerThread != null)
 				&& (_automationControllerThread.isAlive())) {
 			_automationControllerThread.interrupt();
 		}
+		
+		/* Unset the bluetooth controller for the control devices */
+		setBluetoothControllerForDevices(null);
 
-		return Status.OK;
+		/* Unset the persistent data bridge for the control devices */
+		setPersistentDataBridgeForDevices(null);
+		
+		/* Unregister as a BluetoothController event handler */
+		_bluetoothController.unregisterEventHandler(this);
+
+		setState(ControllerState.INACTIVE);
+
+		return writeInfo("AutomationController stopped");
+	}
+
+	@Override
+	public Status destroy() {
+		/* If the AutomationController is already running, execute stop() */
+		ControllerState state = getState();
+		if ( (state!= ControllerState.INACTIVE) ||
+				(state != ControllerState.UNKNOWN) ) {
+			if (stop() != Status.OK) {
+				OLog.warn("Failed to stop AutomationController");
+			}
+		}
+		
+		/* Unload the control mechanisms */
+		destroyControlDevices();
+		
+		setState(ControllerState.UNKNOWN);
+
+		return writeInfo("AutomationController destroyed");
 	}
 
 	/********************/
@@ -229,110 +356,119 @@ public class AutomationController extends AbstractController implements
 	/*********************/
 	/** Private Methods **/
 	/*********************/
-	private Status performDeviceActivate(ControlMechanism device, String params) {
+	private Status activateDevice(ControlMechanism device, String params) {
+		/* Check the controller state prior to device activation */
+		ControllerState state = getState();
+		if (state != ControllerState.READY) {
+			return writeErr(toString() 
+					+ " state is invalid for device activation: " 
+					+ state.toString());
+		}
+		
+		setState(ControllerState.BUSY);
+		
 		_automationControllerThread = Thread.currentThread();
 		_activeMechanism = device;
 		
 		if (device == null) {
-			OLog.err("Device is null");
-			return Status.FAILED;
-		}
-
-		if (device.initialize() != Status.OK) {
-			OLog.err("Failed to initialize " + device.getName());
-			return Status.FAILED;
+			setState(ControllerState.READY);
+			return writeErr("Device not found. " 
+					+ "Cannot perform device activation.");
 		}
 
 		if (device.activate(params) != Status.OK) {
-			OLog.err("Failed to activate " + device.getName());
-			device.destroy();
-			return Status.FAILED;
+			setState(ControllerState.READY);
+			return writeErr("Failed to activate " + device.getName());
 		}
-
-		if (device.isPollable()) {
-			OLog.info("Polling " + device.getName() + "...");
-			performDevicePoll(device);
-		} else if (device.isBlocking()) {
-			/* If this is a blocking device, wait until a response is received */
-			long sleepTime = device.getTimeoutDuration();
-			try {
-				Thread.sleep(sleepTime);
-			} catch (InterruptedException e) {
-				OLog.info("Interrupted");
-			}
-		}
-
-		device.destroy();
 		
 		_activeMechanism = null;
 		_automationControllerThread = null;
+		
+		setState(ControllerState.READY);
 
-		return Status.OK;
+		return writeInfo("Device activated: " + device.getName());
 	}
 	
-	private Status performDevicePoll(ControlMechanism device) {
-		long startTime = System.currentTimeMillis();
-		long stopTime = startTime + device.getTimeoutDuration();
-		long sleepTime = device.getPollDuration();
-		long cycles = device.getTimeoutDuration() / sleepTime;
-		
-		device.clearReceivedData();
-		
-		for ( int i = 0; i < (int) cycles; i++) {
-			OLog.info("Cycle started");
-			try {
-				Thread.sleep(sleepTime);
-			} catch (InterruptedException e) {
-				OLog.info("Poll Interrupted");
-				OLog.info("    State: " + this.getState());
-			}
-			
-			if (this.getState() == ControllerState.UNKNOWN) {
-				OLog.warn("Terminating poll");
-				break;
-			}
-			
-			if (device.shouldContinuePolling()) {
-				OLog.info("Getting poll status");
-				_isUninterruptible = true;
-				try {
-					Thread.sleep(sleepTime);
-				} catch (InterruptedException e) {
-					OLog.info("Poll Interrupted");
-					OLog.info("    State: " + this.getState());
-				}
-				_isUninterruptible = false;
-				/* If so, send out the polling command */
-				device.pollStatus();
-			} else {
-				OLog.info("Stopping poll");
-				/* Otherwise, break the loop and exit */
-				break;
-			}
-			OLog.info("Cycle stopped");
+	private Status pollDevice(ControlMechanism device) {
+		/* Check the controller state prior to device poll */
+		ControllerState state = getState();
+		if (state != ControllerState.READY) {
+			return writeErr(toString() 
+					+ " state is invalid for device poll: " 
+					+ state.toString());
 		}
 		
-		return Status.OK;
-	}
-
-	private Status performDeviceDeactivate(ControlMechanism device, String params) {
+		setState(ControllerState.BUSY);
+		
 		_automationControllerThread = Thread.currentThread();
 		_activeMechanism = device;
 		
 		if (device == null) {
-			OLog.err("Device is null");
-			return Status.FAILED;
+			setState(ControllerState.READY);
+			return writeErr("Device not found. " 
+					+ "Cannot perform device activation.");
+		}
+		
+		if (device.clearReceivedData() != Status.OK) {
+			setState(ControllerState.READY);
+			return writeErr("Failed to clear received data for device: " 
+					+ device.getName() + " "
+					+ "Cannot perform device poll.");
+		}
+		
+		if (device.pollStatus() != Status.OK) {
+			setState(ControllerState.READY);
+			return writeErr("Failed to poll status for device: " 
+					+ device.getName());
 		}
 
-		if (device.initialize() != Status.OK) {
-			OLog.err("Failed to initialize " + device.getName());
-			return Status.FAILED;
+		long sleepTime = device.getPollDuration();
+		try {
+			Thread.sleep(sleepTime);
+		} catch (InterruptedException e) {
+			OLog.info("Poll Interrupted");
+			OLog.info("    State: " + getState());
 		}
+		
+		if (device.shouldContinuePolling()) {
+			OLog.info("Polling continues...");
+		} else {
+			OLog.info("Stopping poll");
+		}
+			
+		_activeMechanism = null;
+		_automationControllerThread = null;
 
+		setState(ControllerState.READY);
+
+		return writeInfo("Device polled: " + device.getName());
+	}
+
+	private Status deactivateDevice(ControlMechanism device, 
+			String params) {
+		/* Check the controller state prior to device deactivate */
+		ControllerState state = getState();
+		if (state != ControllerState.READY) {
+			return writeErr(toString() 
+					+ " state is invalid for device deactivation: " 
+					+ state.toString());
+		}
+		
+		setState(ControllerState.BUSY);
+		
+		_automationControllerThread = Thread.currentThread();
+		_activeMechanism = device;
+		
+		if (device == null) {
+			setState(ControllerState.READY);
+			return writeErr("Device not found. " 
+					+ "Cannot perform device deactivation.");
+		}
+		
 		if (device.deactivate(params) != Status.OK) {
-			OLog.err("Failed to deactivate " + device.getName());
-			device.destroy();
-			return Status.FAILED;
+			setState(ControllerState.READY);
+			return writeErr("Failed to deactivate device: " 
+					+ device.getName());
 		}
 
 		/* If this is a blocking device, wait until a response is received */
@@ -343,296 +479,139 @@ public class AutomationController extends AbstractController implements
 				OLog.info("Interrupted");
 			}
 		}
-
-		device.destroy();
 		
 		_activeMechanism = null;
 		_automationControllerThread = null;
 
-		return Status.OK;
+		setState(ControllerState.READY);
+
+		return writeInfo("Device deactivated: " + device.getName());
 	}
+	
+	private ControlMechanism getDevice(String name) {
+		if (_controlDevices == null) {
+			writeErr("No control devices registered");
+			return null;
+		}
+		
+		for (ControlMechanism device : _controlDevices) {
+			if (device.getName().equals(name)) {
+				return device;
+			}
+		}
 
-	/*******************/
-	/** Inner Classes **/
-	/*******************/
-	private class SubmersiblePump extends ControlMechanism {
-		private static final String ACTV_CMD_STR = "ACTV S1";
-		private static final String DEACT_CMD_STR = "DEACT S1";
-
-		public SubmersiblePump(BluetoothController bluetooth) {
-			super(bluetooth);
-			this.setName("Submersible Pump");
-			this.setBlocking(true);
-			this.setTimeoutDuration(120000);
+		writeErr("Control device not found");
+		return null;
+	}
+	
+	private void setPersistentDataBridgeForDevices(
+			IPersistentDataBridge dataBridge) {
+		if (_controlDevices == null) {
+			writeErr("No control devices registered");
 			return;
 		}
 
-		@Override
-		public Status activate() {
-			OLog.info(this.getName() + " activated.");
-			return send(ACTV_CMD_STR.getBytes());
+		/* Set the PersistentDataBridge for each control device */
+		for (ControlMechanism device : _controlDevices) {
+			device.setPersistentDataBridge(dataBridge);
 		}
-
-		@Override
-		public Status deactivate() {
-			OLog.info(this.getName() + " deactivated.");
-			return send(DEACT_CMD_STR.getBytes());
-		}
-
-		@Override
-		public Status activate(String params) {
-			return this.activate();
-		}
-
-		@Override
-		public Status deactivate(String params) {
-			return this.deactivate();
-		}
-
-		@Override
-		public Status pollStatus() {
-			// TODO Auto-generated method stub
-			return Status.OK;
-		}
+		
+		return;
 	}
 	
-	private class PeristalticPump extends ControlMechanism {
-		private static final String ACTV_CMD_STR = "ACTV P1";
-		private static final String DEACT_CMD_STR = "DEACT P1";
-
-		public PeristalticPump(BluetoothController bluetooth) {
-			super(bluetooth);
-			this.setName("Peristaltic Pump");
-			this.setBlocking(true);
-			this.setTimeoutDuration(10000);
+	private void setBluetoothControllerForDevices( 
+			BluetoothController btController ) {
+		if (_controlDevices == null) {
+			writeErr("No control devices registered");
 			return;
 		}
 
-		@Override
-		public Status activate() {
-			OLog.info(this.getName() + " activated.");
-			return send(ACTV_CMD_STR.getBytes());
+		/* Set the BluetoothController for each control device */
+		for (ControlMechanism device : _controlDevices) {
+			device.setBluetoothController(btController);
 		}
-
-		@Override
-		public Status deactivate() {
-			OLog.info(this.getName() + " deactivated.");
-			return send(DEACT_CMD_STR.getBytes());
-		}
-
-		@Override
-		public Status activate(String params) {
-			return this.activate();
-		}
-
-		@Override
-		public Status deactivate(String params) {
-			return this.deactivate();
-		}
-
-		@Override
-		public Status pollStatus() {
-			// TODO Auto-generated method stub
-			return Status.OK;
-		}
+		
+		return;
 	}
 	
-	private class DrainValve extends ControlMechanism {
-		private static final String ACTV_CMD_STR = "ACTV V1";
-		private static final String DEACT_CMD_STR = "DEACT V1";
-
-		public DrainValve(BluetoothController bluetooth) {
-			super(bluetooth);
-			this.setName("Drain Valve");
-			this.setBlocking(true);
-			this.setTimeoutDuration(30000);
+	private Status instantiateControlDevices() {
+		if (_controlDevices == null) {
+			_controlDevices = new ArrayList<ControlMechanism>();
 		}
-
-		@Override
-		public Status activate() {
-			return send(ACTV_CMD_STR.getBytes());
-		}
-
-		@Override
-		public Status deactivate() {
-			return send(DEACT_CMD_STR.getBytes());
-		}
-
-		@Override
-		public Status activate(String params) {
-			return this.activate();
-		}
-
-		@Override
-		public Status deactivate(String params) {
-			return this.deactivate();
-		}
-
-		@Override
-		public Status pollStatus() {
-			// TODO Auto-generated method stub
-			return Status.OK;
-		}
-	}
-
-	private class Autosampler extends ControlMechanism {
-		private static final String ACTV_CMD_STR = "I2C 4 n x";
-		private static final String DEACT_CMD_STR = "I2C 4 n y";
-		private static final String STATE_CMD_STR = "I2C 4 y @";
-
-		public Autosampler(BluetoothController bluetooth) {
-			super(bluetooth);
-			this.setName("Autosampler");
-			this.setBlocking(true);
-//			this.setTimeoutDuration(40000);
-//			this.setPollable(true);
-//			this.setPollDuration(5000);
-			this.setTimeoutDuration(600000);
-			this.setPollable(true);
-			this.setPollDuration(30000);
-		}
-
-		@Override
-		public Status activate() {
-//			int dataLen = ACTV_CMD_STR.getBytes().length;
-//			byte data[] = new byte[dataLen+2];
-//			
-//			/* TODO DEBUG EXCEPTION */
-//			try {
-//				System.arraycopy(ACTV_CMD_STR.getBytes(), 0, 
-//								 data, 0, dataLen+1);
-//				data[dataLen] = 0;
-//				data[dataLen+1] = '\r';
-//			} catch (Exception e) {
-//				OLog.err(e.getMessage());
-//				data = ACTV_CMD_STR.getBytes();
-//			}
-//			
-//			return send(data);
-			return this.activate("2");
-		}
-
-		@Override
-		public Status deactivate() {
-			return send(DEACT_CMD_STR.getBytes());
-		}
-
-		@Override
-		public Status activate(String params) {
-			int dataLen = ACTV_CMD_STR.getBytes().length;
-			byte data[] = new byte[dataLen+2];
+		
+		/* Instantiate the control devices devices */
+		for (Class<?> c : _controlDeviceClasses) {
+			Constructor<?>[] constructors = c.getDeclaredConstructors();
+			if (constructors == null) {
+				continue;
+			}
 			
-			String posStr = "";
-			if (params.equals("@")) {
-				posStr = _pDataStore.get("ASHG_CUV_NUM");
-				if (posStr.equals("")) {
-					OLog.info("Empty");
-					posStr = "2";
+			if (constructors.length == 0) {
+				continue;
+			}
+			
+			for (Constructor<?> constructor : constructors) {
+				/* Get the constructor with no arguments */
+				if (constructor.getParameterTypes().length == 0) {
+					try {
+						ControlMechanism device
+							= (ControlMechanism) constructor.newInstance();
+						if (device != null) {
+							_controlDevices.add(device);
+						}
+					} catch (Exception e) {
+						writeErr("Exception occurred trying to instantiate "
+								+ c.getSimpleName() + ": "
+								+ e.getMessage() );
+					}
+					break;
 				}
-			} else {
-				posStr = "2";
 			}
-			
-			data = new String(ACTV_CMD_STR + " " + posStr).getBytes();
-			int pos = Integer.decode(posStr) + 1;
-			if (pos > 30) {
-				pos = 2;
-			}
-			_pDataStore.put("ASHG_CUV_NUM", ("" + pos));
-			OLog.info("Pos updated: " + _pDataStore.get("ASHG_CUV_NUM"));
-			OLog.info("Sending data: " + new String(data));
-			
-			return send(data);
 		}
-
-		@Override
-		public Status deactivate(String params) {
-			return this.deactivate();
+		
+		if (_controlDevices.isEmpty()) {
+			writeErr("No control devices initialized");
+			return Status.FAILED;
 		}
-
-		@Override
-		public Status pollStatus() {
-			return send(STATE_CMD_STR.getBytes());
-		}
-
-		@Override
-		public boolean shouldContinuePolling() {
-			byte data[] = this.getReceivedData();
-			
-			if (data == null) {
-				OLog.warn("Received data is empty");
-				return true;
-			}
-			
-			String response = new String(data);
-			if (response.startsWith("State: 3")) {
-				OLog.info("Found Response: " + response);
-				return false;
-			}
-
-			OLog.info("Found Response: " + response);
-			return true;
-		}
+		
+		return writeInfo("Control mechanisms initialized");
 	}
 
-	private class CuZnAutosampler extends ControlMechanism {
-		private static final String ACTV_CMD_STR = "I2C 2 n x";
-		private static final String DEACT_CMD_STR = "I2C 2 n y";
-		private static final String STATE_CMD_STR = "I2C 2 y @";
-
-		public CuZnAutosampler(BluetoothController bluetooth) {
-			super(bluetooth);
-			this.setName("CuZn Autosampler");
-			this.setBlocking(true);
-//			this.setTimeoutDuration(40000);
-//			this.setPollable(true);
-//			this.setPollDuration(5000);
-			this.setTimeoutDuration(720000);
-			this.setPollable(true);
-			this.setPollDuration(30000);
+	private Status initializeControlDevices() {
+		if (_controlDevices == null) {
+			return writeErr("No control devices registered");
 		}
 
-		@Override
-		public Status activate() {
-			return send(ACTV_CMD_STR.getBytes());
-		}
-
-		@Override
-		public Status deactivate() {
-			return send(DEACT_CMD_STR.getBytes());
-		}
-
-		@Override
-		public Status activate(String params) {
-			return send(ACTV_CMD_STR.getBytes());
-		}
-
-		@Override
-		public Status deactivate(String params) {
-			return this.deactivate();
-		}
-
-		@Override
-		public Status pollStatus() {
-			return send(STATE_CMD_STR.getBytes());
-		}
-
-		@Override
-		public boolean shouldContinuePolling() {
-			byte data[] = this.getReceivedData();
-			
-			if (data == null) {
-				OLog.warn("Received data is empty");
-				return true;
+		/* Setup each control device */
+		for (ControlMechanism device : _controlDevices) {
+			/* Initialize the control device */
+			if (device.initialize() != Status.OK) {
+				return writeErr("Failed to initialize device:" 
+						+ device.getName() );
 			}
-			
-			String response = new String(data);
-			if ((response.startsWith("Cu:")) || (response.startsWith("Zn:"))) {
-				OLog.info("Data obtained - " + response);
-				return false;
-			}
-			
-			return true;
 		}
+		
+		return writeInfo("Control mechanisms initialized");
+	}
+	
+	private void destroyControlDevices() {
+		if (_controlDevices == null) {
+			writeErr("No control devices registered");
+			return;
+		}
+
+		/* Destroy the control devices */
+		for (ControlMechanism device : _controlDevices) {
+			if (device.destroy() != Status.OK) {
+				OLog.warn("Failed to cleanup device: " 
+						+ device.getName() );
+			}
+		}
+		
+		/* Unload the control devices list */
+		_controlDevices.clear();
+		_controlDevices = null;
+		
+		return;
 	}
 }

@@ -2,44 +2,63 @@ package net.oukranos.oreadv1.android;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import net.oukranos.oreadv1.interfaces.PersistentDataStoreIntf;
-import net.oukranos.oreadv1.util.OreadLogger;
+import net.oukranos.oreadv1.interfaces.IPersistentDataBridge;
+import net.oukranos.oreadv1.types.Status;
 
-public class AndroidStoredDataBridge implements PersistentDataStoreIntf {
-	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
+public class AndroidStoredDataBridge extends AndroidBridgeImpl implements IPersistentDataBridge {
 	private static final String SHARED_PREFS_ID = "OreadSharedPrefStr_dd31_778924";
 	
 	private static AndroidStoredDataBridge _dataStore = null;
-	private static Context _context = null;
 	
 	private SharedPreferences _sharedPrefs = null;
 	
-	public AndroidStoredDataBridge(Object params) {
-		_sharedPrefs = _context.getSharedPreferences(SHARED_PREFS_ID, 
-				Context.MODE_PRIVATE);
+	private AndroidStoredDataBridge() {
 		return;
 	}
 	
-	public static AndroidStoredDataBridge getInstance(Object params) {
-		if (params == null) {
-			OLog.err("Invalid instantiation parameters");
-			return null;
-		}
-		
-		/* Update context */
-		try {
-			_context = (Context) params;
-		} catch (Exception e) {
-			OLog.err("Exception occurred: " + e.getMessage());
-			return null;
-		}
-		
+	public static AndroidStoredDataBridge getInstance() {
 		if (_dataStore == null) {
-			_dataStore = new AndroidStoredDataBridge(params);
+			_dataStore = new AndroidStoredDataBridge();
 		}
 		
 		return _dataStore;
+	}
+	
+	private Status loadSharedPrefs() {
+		if (_context == null) {
+			return Status.FAILED;
+		}
+		
+		_sharedPrefs = _context.getSharedPreferences(SHARED_PREFS_ID, 
+				Context.MODE_PRIVATE);
+		if (_sharedPrefs == null) {
+			return Status.FAILED;
+		}
+		
+		return Status.OK;
+	}
+	
+	public Status initialize(Object initObject) {
+		if (loadInitializer(initObject) != Status.OK) {
+			OLog.err("Failed to initialize " + getPlatform() + "." + getId());
+			return Status.FAILED;
+		}
+		
+		if (loadSharedPrefs() != Status.OK) {
+			return Status.FAILED;
+		}
+		
+		return Status.OK;
+	}
+
+	@Override
+	public String getId() {
+		return "persistentDataStore";
+	}
+
+	@Override
+	public String getPlatform() {
+		return "android";
 	}
 	
 	@Override

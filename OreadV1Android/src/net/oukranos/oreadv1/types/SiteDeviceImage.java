@@ -153,7 +153,7 @@ public class SiteDeviceImage implements JsonEncodableData, HttpEncodableData {
 			
 			String dateRecordedStr 	= Long.toString(reportData.getLong("dateRecorded"));
 			String readingOfStr 	= reportData.getString("readingOf");
-			String unitsStr 		= reportData.getString("units");
+			String readCatStr 		= reportData.getString("readingCat");
 			String valueStr 		= Double.toString(reportData.getDouble("value"));
 			String errMsgStr		= reportData.getString("errMsg");
 			
@@ -163,14 +163,14 @@ public class SiteDeviceImage implements JsonEncodableData, HttpEncodableData {
 			e.addPart("context", 		new StringBody(_context)); 
 			e.addPart("dateRecorded",  	new StringBody(dateRecordedStr));
 			e.addPart("readingOf",     	new StringBody(readingOfStr));
-			e.addPart("units",         	new StringBody(unitsStr));
+			e.addPart("readingCat",     new StringBody(readCatStr));
 			e.addPart("value",      	new StringBody(valueStr));
 			e.addPart("errMsg",       	new StringBody(errMsgStr));
 			
 			/* Finally, add the captured file */
 	        FileBody isb = new FileBody(new File(getCaptureFilePath() + "/" + getCaptureFileName()), "image/jpeg");
 	        OLog.info("File Info:     MIME-Type: " + isb.getMimeType() + " Media-Type: " + isb.getMediaType());
-	        e.addPart("photo", isb);
+	        e.addPart("attachment", isb);
 	        
 		} catch (Exception e1) {
 			OLog.err("Generate HttpEntity failed");

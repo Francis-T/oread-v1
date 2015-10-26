@@ -115,24 +115,23 @@ public class FragmentReadings extends Fragment {
 		
 		WaterQualityData data = null;
 		
-		if (_serviceAPI == null) {
-			OLog.err("Service unavailable");
-			return _viewRef;
+		if (_serviceAPI != null) {
+			OLog.err("Service available");
+			
+			/* Attempt to retrieve the data from the service */
+			try {
+				data = _serviceAPI.getData();
+			} catch (RemoteException e) {
+				OLog.err("Failed to get data: " + e.getMessage());
+				return _viewRef;
+			} catch (Exception e) {
+				OLog.err("Failed to get data: " + e.getMessage());
+				return _viewRef;
+			}
+			
+			/* Start a field map update task */
+			new FieldMapUpdateTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, data);
 		}
-		
-		/* Attempt to retrieve the data from the service */
-		try {
-			data = _serviceAPI.getData();
-		} catch (RemoteException e) {
-			OLog.err("Failed to get data: " + e.getMessage());
-			return _viewRef;
-		} catch (Exception e) {
-			OLog.err("Failed to get data: " + e.getMessage());
-			return _viewRef;
-		}
-		
-		/* Start a field map update task */
-		new FieldMapUpdateTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, data);
 		
 		return _viewRef;
 	}
@@ -205,14 +204,16 @@ public class FragmentReadings extends Fragment {
 			}
 			
 			try {
-				OreadServiceControllerStatus cs = _serviceAPI.getStatus();
-				if (cs == null) {
-					_serviceAPI.start();
-					_serviceAPI.addListener(_listener);
-				} else if (cs.getState() == ControllerState.UNKNOWN) {
-					_serviceAPI.start();
-					_serviceAPI.addListener(_listener);
-				}
+//				OreadServiceControllerStatus cs = _serviceAPI.getStatus();
+//				if (cs == null) {
+//					_serviceAPI.start();
+//					_serviceAPI.addListener(_listener);
+//				} else if (cs.getState() == ControllerState.UNKNOWN) {
+//					_serviceAPI.start();
+//					_serviceAPI.addListener(_listener);
+//				}
+				_serviceAPI.start();
+				_serviceAPI.addListener(_listener);
 				
 			} catch (RemoteException e) {
 				e.printStackTrace();

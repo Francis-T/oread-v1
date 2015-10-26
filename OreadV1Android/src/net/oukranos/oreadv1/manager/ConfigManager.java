@@ -2,15 +2,13 @@ package net.oukranos.oreadv1.manager;
 
 import org.apache.http.HttpEntity;
 
-import android.content.Context;
-import net.oukranos.oreadv1.android.AndroidConnectivityBridge;
-import net.oukranos.oreadv1.android.AndroidInternetBridge;
-import net.oukranos.oreadv1.android.AndroidStoredDataBridge;
-import net.oukranos.oreadv1.interfaces.ConnectivityBridgeIntf;
-import net.oukranos.oreadv1.interfaces.DeviceIdentityIntf;
 import net.oukranos.oreadv1.interfaces.HttpEncodableData;
-import net.oukranos.oreadv1.interfaces.InternetBridgeIntf;
+import net.oukranos.oreadv1.interfaces.IPersistentDataBridge;
+import net.oukranos.oreadv1.interfaces.bridge.IConnectivityBridge;
+import net.oukranos.oreadv1.interfaces.bridge.IDeviceInfoBridge;
+import net.oukranos.oreadv1.interfaces.bridge.IInternetBridge;
 import net.oukranos.oreadv1.manager.FilesystemManager.FSMan;
+import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.SendableData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.config.Configuration;
@@ -33,6 +31,11 @@ public class ConfigManager {
 	
 	private static ConfigManager _configMgr = null;
 	private Configuration _config = null;
+	private MainControllerInfo _mainInfo = null;
+	
+	private IConnectivityBridge _connBridge = null;
+	private IInternetBridge _internetBridge = null;
+	private IPersistentDataBridge _storedDataBridge = null;
 	
 	private ConfigManager() {
 		return;
@@ -43,6 +46,88 @@ public class ConfigManager {
 			_configMgr = new ConfigManager();
 		}
 		return _configMgr; 
+	}
+
+	public Status initialize(Object initObject) {
+		if (initObject == null) {
+			OLog.err("Invalid initializer object in ConfigManager.initialize()");
+			return Status.FAILED;
+		}
+
+		try {
+			_mainInfo = (MainControllerInfo) initObject;
+		} catch(Exception e) {
+			OLog.err("Initializer object is not a valid " +
+					 "MainControllerInfo object");
+			return Status.FAILED;
+		}
+		
+		if (getConnectivityBridge() == null) {
+			OLog.err("Failed to get connectivity bridge");
+			return Status.FAILED;
+		}
+		
+		if (getInternetBridge() == null) {
+			OLog.err("Failed to get internet bridge");
+			return Status.FAILED;
+		}
+		
+		if (getPersistentDataBridge() == null) {
+			OLog.err("Failed to get persistent data bridge");
+			return Status.FAILED;
+		}
+		
+		return Status.OK;
+	}
+	
+	private IConnectivityBridge getConnectivityBridge() {
+		_connBridge = (IConnectivityBridge) _mainInfo
+				.getFeature("connectivity");
+		if (_connBridge == null) {
+			return null;
+		}
+		
+		if ( _connBridge.isReady() == false ) {
+			if (_connBridge.initialize(_mainInfo) != Status.OK) {
+				_connBridge = null;
+			}
+		}
+		
+		return _connBridge;
+	}
+
+	private IInternetBridge getInternetBridge() {
+		_internetBridge = (IInternetBridge) _mainInfo
+				.getFeature("internet");
+		if (_internetBridge == null) {
+			OLog.err("Retrieve failure");
+			return null;
+		}
+		
+		if ( _internetBridge.isReady() == false ) {
+			if (_internetBridge.initialize(_mainInfo) != Status.OK) {
+				OLog.err("Init failure");
+				_internetBridge = null;
+			}
+		}
+		
+		return _internetBridge;
+	}
+	
+	private IPersistentDataBridge getPersistentDataBridge() {
+		_storedDataBridge = (IPersistentDataBridge) _mainInfo
+				.getFeature("persistentDataStore");
+		if (_storedDataBridge == null) {
+			return null;
+		}
+		
+		if ( _storedDataBridge.isReady() == false ) {
+			if (_storedDataBridge.initialize(_mainInfo) != Status.OK) {
+				_storedDataBridge = null;
+			}
+		}
+		
+		return _storedDataBridge;
 	}
 	
 	public Configuration getConfig(String file) {
@@ -96,22 +181,7 @@ public class ConfigManager {
 		return Status.OK;
 	}
 	
-	public Status runConfigFileUpdate(Object updateObj) {
-		if (updateObj == null) {
-			OLog.err("Invalid Update Object");
-			return Status.FAILED;
-		}
-		
-		/* Cast the update object as a Context object **/
-		Context context = null;
-		
-		try {
-			context = (Context) updateObj;
-		} catch (Exception e) {
-			OLog.err("Exception occurred: " + e.getMessage());
-			return Status.FAILED;
-		}
-		
+	public Status runConfigFileUpdate() {
 		/* Get the old config file path */
 		String cfgFilePath = this.getFullConfigFilePath();
 		
@@ -122,16 +192,19 @@ public class ConfigManager {
 			return Status.FAILED;
 		}
 		_config = oldConfig;
+
 		
 		/* Record the current system time as the last updated time 
 		 * 	for the config file */
-		AndroidStoredDataBridge pDataStore1 
-			= AndroidStoredDataBridge.getInstance(context);
-		pDataStore1.put("LAST_CFG_UPDATE_TIME", "0");
+		if (_storedDataBridge != null) {
+			_storedDataBridge.put("LAST_CFG_UPDATE_TIME", "0");
+		} else {
+			OLog.warn("Stored data bridge unavailable");
+		}
 
 		/* Get the old config file age limit and time since last update */
 		long ageLimit = this.getConfigFileAgeLimit();
-		long lastUpdateAge = this.getConfigFileLastUpdateAge(context);
+		long lastUpdateAge = this.getConfigFileLastUpdateAge();
 		
 		/* If the elapsed time since the last config file update has hit the
 		 *   age limit, then a new config file should be downloaded */
@@ -143,7 +216,7 @@ public class ConfigManager {
 		
 		/* Attempt to download the new config file */
 		OLog.info("Downloading config file...");
-		if (this.downloadConfigFile(context, DEFAULT_CFG_FILE_PATH, 
+		if (this.downloadConfigFile(DEFAULT_CFG_FILE_PATH, 
 				DEFAULT_CFG_FILE_TEMP_NAME) == Status.OK) {
 			String tempCfgFilePath = 
 					DEFAULT_CFG_FILE_PATH + "/" + DEFAULT_CFG_FILE_TEMP_NAME;
@@ -161,11 +234,13 @@ public class ConfigManager {
 		
 		/* Record the current system time as the last updated time 
 		 * 	for the config file */
-		AndroidStoredDataBridge pDataStore 
-			= AndroidStoredDataBridge.getInstance(context);
 //		pDataStore.put("LAST_CFG_UPDATE_TIME", 
 //				Long.toString(System.currentTimeMillis()));
-		pDataStore.put("LAST_CFG_UPDATE_TIME", "0");
+		if (_storedDataBridge != null) {
+			_storedDataBridge.put("LAST_CFG_UPDATE_TIME", "0");
+		} else {
+			OLog.warn("Stored data bridge unavailable");
+		}
 		
 		return Status.OK;
 	}
@@ -206,53 +281,6 @@ public class ConfigManager {
 		}
 		
 		return d.getValue();
-	}
-	
-	private Status downloadConfigFile(Context context, 
-			String savePath, String saveFileName) {
-		ConnectivityBridgeIntf connBridge = 
-				AndroidConnectivityBridge.getInstance();
-		connBridge.initialize(context);
-		
-		/* Check connectivity */
-		if (connBridge.isConnected() == false) {
-			OLog.err("Not connected");
-			return Status.FAILED;
-		}
-		
-		/* Download a new version of the config file from the remote server 
-		 *   only if a connection is available */
-		InternetBridgeIntf netBridge = AndroidInternetBridge.getInstance();
-		netBridge.initialize(context);
-		
-		/* Create a dummy GET request */
-		String cfgUrl = this.getDeviceConfigUrl(context);
-		SendableData getConfigRequest = new SendableData(cfgUrl, "GET",
-				new HttpEncodableData() {
-					@Override
-					public HttpEntity encodeDataToHttpEntity() {
-						return null;
-					}
-				}
-		);
-		
-		/* Send the dummy request in order to receive a response */
-		if (netBridge.send(getConfigRequest) != Status.OK) {
-			OLog.err("Failed to download config file");
-			return Status.FAILED;
-		}
-		
-		/* Retrieve the response from the network bridge */
-		byte[] configFileBin = netBridge.getResponse();
-		String configFileStr = new String(configFileBin);
-		
-		/* Save data to file */
-		this.saveConfigFileData(configFileStr.getBytes(),
-				savePath, saveFileName);
-		
-		OLog.info("Response: " + configFileStr); // DEBUG TODO
-		
-		return Status.OK;
 	}
 	
 	/*********************/
@@ -297,12 +325,13 @@ public class ConfigManager {
 		return ageThreshold;
 	}
 	
-	private long getConfigFileLastUpdateAge(Context context) {
+	private long getConfigFileLastUpdateAge() {
 		String result = null;
-		AndroidStoredDataBridge pDataStore 
-			= AndroidStoredDataBridge.getInstance(context);
-		if (pDataStore != null) {
-			result = pDataStore.get("LAST_CFG_UPDATE_TIME");
+		if (_storedDataBridge != null) {
+			result = _storedDataBridge.get("LAST_CFG_UPDATE_TIME");
+		} else {
+			OLog.warn("Stored data bridge unavailable");
+			return 0l;
 		}
 		
 		if (result == null) {
@@ -321,14 +350,9 @@ public class ConfigManager {
 		return lastUpdated;
 	}
 	
-	private String getDeviceConfigUrl(Context context) {
+	private String getDeviceConfigUrl() {
 		String deviceConfigUrl = DEFAULT_DEVICE_CONFIG_URL_BASE
 				+ "/" + DEFAULT_DEVICE_CONFIG_URL_ID;
-		
-		if (context == null) {
-			OLog.warn("Cannot get device config url: Invalid context");
-			return deviceConfigUrl;
-		}
 		
 		if (_config == null) {
 			OLog.warn("Cannot get device config url: Invalid configuration");
@@ -360,7 +384,7 @@ public class ConfigManager {
 		 *  on its IMEI to use as its device id URL - the case below is 
 		 *  only executed if a device id is defined in the fonfig file. */
 		d = _config.getData("device_config_url_id");
-		String url_device_id = this.getDeviceConfigUrlId(context);
+		String url_device_id = this.getDeviceConfigUrlId();
 		if (d != null) {
 			
 			if (d.getType().equals("string") == false) {
@@ -384,15 +408,13 @@ public class ConfigManager {
 		return deviceConfigUrl;
 	}
 	
-	private String getDeviceConfigUrlId(Context context) {
-		DeviceIdentityIntf deviceIdBridge = 
-				AndroidConnectivityBridge.getInstance();
-		if (deviceIdBridge == null) {
-			OLog.err("Could not obtain device identity bridge");
+	private String getDeviceConfigUrlId() {
+		if (_connBridge == null) {
+			OLog.err("Device identity bridge unavailable");
 			return DEFAULT_DEVICE_CONFIG_URL_ID;
 		}
 		
-		return ("DV" + deviceIdBridge.getDeviceId());
+		return ("DV" + ((IDeviceInfoBridge)_connBridge).getDeviceId());
 	}
 	
 	private Status saveConfigFileData(byte data[], String filePath, 
@@ -401,6 +423,52 @@ public class ConfigManager {
 			OLog.err("Save config file data failed");
 			return Status.FAILED;
 		}
+		return Status.OK;
+	}
+	
+	private Status downloadConfigFile(String savePath, String saveFileName) {
+		if (_connBridge == null) {
+			OLog.err("Connectivity bridge unavailable");
+			return Status.FAILED;
+		}
+		
+		/* Check connectivity */
+		if (_connBridge.isConnected() == false) {
+			OLog.err("Not connected");
+			return Status.FAILED;
+		}
+		
+		/* Download a new version of the config file from the remote server 
+		 *   only if a connection is available */
+		if (_internetBridge == null) {
+			OLog.err("Internet bridge unavailable");
+			return Status.FAILED;
+		}
+		
+		/* Create a dummy GET request */
+		String cfgUrl = this.getDeviceConfigUrl();
+		SendableData getConfigRequest = new SendableData(cfgUrl, "GET",
+				new HttpEncodableData() {
+					@Override
+					public HttpEntity encodeDataToHttpEntity() {
+						return null;
+					}
+				}
+		);
+		
+		/* Send the dummy request in order to receive a response */
+		if (_internetBridge.send(getConfigRequest) != Status.OK) {
+			OLog.err("Failed to download config file");
+			return Status.FAILED;
+		}
+		
+		/* Retrieve the response from the network bridge */
+		byte[] configFileBin = _internetBridge.getResponse();
+		
+		/* Save data to file */
+		this.saveConfigFileData(configFileBin,
+				savePath, saveFileName);
+		
 		return Status.OK;
 	}
 }

@@ -13,37 +13,36 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.impl.client.DefaultHttpClient;
-
-import android.content.Context;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
+import org.apache.http.util.EntityUtils;
 
 import net.oukranos.oreadv1.interfaces.AbstractController;
 import net.oukranos.oreadv1.interfaces.HttpEncodableData;
+import net.oukranos.oreadv1.interfaces.bridge.IConnectivityBridge;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.DataStore;
 import net.oukranos.oreadv1.types.DataStoreObject;
 import net.oukranos.oreadv1.types.MainControllerInfo;
+import net.oukranos.oreadv1.types.NetworkResponse;
 import net.oukranos.oreadv1.types.SendableData;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OreadLogger;
 
 public class NetworkController extends AbstractController {
-	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
-	
 	private static final int MAX_QUEUE_CAPACITY = 20;
 	private static final long MAX_DESTROY_THREAD_TIMEOUT = 5000;
+	private static final long DEFAULT_AWAIT_RESPONSE_TIMEOUT = 30000;
+	
 	private static final int HTTP_ERROR_CODE_THRESHOLD = 300;
+	public  static final int HTTP_RESPONSE_CODE_OK = 200;
 
 	private Lock _queueLock = null;
+	private Lock _waitThreadLock = null;
 	private Queue<SendableData> _sendTaskQueue = null;
 	private SendThreadTask _sendTaskLoop = null;
 	private Thread _sendTaskLoopThread = null;
+	private Thread _awaitResponseThread = null;
 	private boolean _sendThreadRunning = false;
-	private Context _parentContext = null;
-	private MainControllerInfo _mainInfo = null;
+	private NetworkResponse _lastResponse = null;
 
 	private static NetworkController _networkController = null;
 	private static final HttpClient _httpClient = new DefaultHttpClient();
@@ -56,34 +55,22 @@ public class NetworkController extends AbstractController {
 
 		/* Set the controller state */
 		this.setState(ControllerState.UNKNOWN);
-
-		
-		/* TODO Will need to separate this from the implementation later
-		 * since it is actually part of the android platform. Goal is to
-		 * be able to run the SubControllers independently of Android */
-		this._parentContext = (Context) mainInfo.getContext();
-		
-		/* Set the main info reference */
-		this._mainInfo = mainInfo;
 		
 		return;
 	}
 
 	public static NetworkController getInstance(MainControllerInfo mainInfo) {
+		if (mainInfo == null) {
+			OLog.err("Invalid input parameter/s" +
+					" in NetworkController.getInstance()");
+			return null;
+		}
+		
 		if (_networkController == null) {
-			if (mainInfo == null) {
-				return null;
-			}
-			
-			/* TODO Will need to separate this from the implementation later
-			 * since it is actually part of the android platform. Goal is to
-			 * be able to run the SubControllers independently of Android */
-			if (mainInfo.getContext() == null) {
-				return null;
-			}
-
 			_networkController = new NetworkController(mainInfo);
 		}
+		
+		_networkController._mainInfo = mainInfo;
 
 		return _networkController;
 	}
@@ -92,6 +79,7 @@ public class NetworkController extends AbstractController {
 	public Status initialize(Object initializer) {
 		_sendTaskQueue = new LinkedList<SendableData>();
 		_queueLock = new ReentrantLock();
+		_waitThreadLock = new ReentrantLock();
 
 		this.setState(ControllerState.INACTIVE);
 
@@ -117,6 +105,17 @@ public class NetworkController extends AbstractController {
 			}
 		}
 
+		/* Destroy the await response lock */
+		if (_waitThreadLock != null) {
+			if (_waitThreadLock.tryLock()) {
+				try {
+					_waitThreadLock.unlock();
+				} catch (Exception e) {
+					OLog.err("Unlock failed");
+				}
+			}
+		}
+		
 		/* Destroy the Task Queue */
 		if (_sendTaskQueue != null) {
 			_sendTaskQueue.clear();
@@ -132,7 +131,8 @@ public class NetworkController extends AbstractController {
 	public ControllerStatus performCommand(String cmdStr, String paramStr) {
 		/* Check that inputs are valid */
 		if (cmdStr == null) {
-			this.writeErr("Invalid input params");
+			this.writeErr("Invalid input parameter/s" +
+							" in NetworkController.performCommand()");
 			return this.getControllerStatus();
 		}
 		
@@ -297,6 +297,66 @@ public class NetworkController extends AbstractController {
 
 		return Status.OK;
 	}
+	
+	public Status waitForResponse() {
+		Status retStatus = Status.FAILED;
+		
+		if (checkInternetConnectivity() != Status.OK) {
+			return Status.FAILED;
+		}
+		
+		_waitThreadLock.lock();
+		_awaitResponseThread = Thread.currentThread();
+		_waitThreadLock.unlock();
+		
+		try {
+			Thread.sleep(DEFAULT_AWAIT_RESPONSE_TIMEOUT);
+		} catch (InterruptedException e) {
+			retStatus = Status.OK;
+		} catch (Exception e) {
+			OLog.err("Exception Occurred: " + e.getMessage());
+			retStatus = Status.FAILED;
+		}
+
+		_waitThreadLock.lock();
+		_awaitResponseThread = null;
+		_waitThreadLock.unlock();
+		
+		return retStatus;
+	}
+	
+	public int getLastResponseCode() {
+		if (_lastResponse != null) {
+			return _lastResponse.getStatusCode();
+		}
+		
+		return 0;
+	}
+	
+	public String getLastResponseMessage() {
+		if (_lastResponse != null) {
+			return _lastResponse.getStatusMessage();
+		}
+		
+		return "";
+	}
+	
+	public byte[] getLastResponseData() {
+		if (_lastResponse != null) {
+			return _lastResponse.getData();
+		}
+		
+		return null;
+	}
+	
+	public boolean isLastResponseAvailable() {
+		return (_lastResponse != null ? true : false);
+	}
+	
+	public void clearLastResponse() {
+		_lastResponse = null;
+		return;
+	}
 
 	/*********************/
 	/** Private Methods **/
@@ -359,6 +419,7 @@ public class NetworkController extends AbstractController {
 			httpRequest = new HttpPost(url);
 			((HttpPost)httpRequest).setEntity(sendableData.getData().encodeDataToHttpEntity());
 		}
+		
 		HttpResponse httpResp = null;
 		try {
 			httpResp = _httpClient.execute(httpRequest);
@@ -373,37 +434,66 @@ public class NetworkController extends AbstractController {
 			OLog.err("Failed to perform HttpPost");
 			return Status.FAILED;
 		}
+		
+		/* Initialize the last response object */
+		if (_lastResponse == null) {
+			_lastResponse = new NetworkResponse();
+		}
 
+		/* Extract the status code and message */
 		int statusCode = httpResp.getStatusLine().getStatusCode();
 		String statusMsg = httpResp.getStatusLine().getReasonPhrase();
+		_lastResponse.setStatusCode(statusCode);
+		_lastResponse.setStatusMsg(statusMsg);
+		
+		/* Check if the HTTP Response Code has reached the error threshold */
 		if (statusCode >= HTTP_ERROR_CODE_THRESHOLD) {
 			OLog.err("HttpResponse Error: " + statusCode + " - " + statusMsg);
 			return Status.FAILED;
 		}
-		
-		if (statusCode != 200) {
+
+		/* Check if the HTTP Response Code is an unexpected response code (i.e. not HTTP_OK) */
+		if (statusCode != HTTP_RESPONSE_CODE_OK) {
 			OLog.warn("HttpResponse Unexpected: " + statusCode + " - " + statusMsg);
-			return Status.FAILED;
+			return Status.OK;
+		}
+		
+		/* Save the last response's data */
+		try {
+			_lastResponse.setData(EntityUtils.toByteArray(httpResp.getEntity()));
+		} catch (Exception e) {
+			_lastResponse.setData(null);
 		}
 
 		OLog.info("Sent data to " + url);
-
 		return Status.OK;
 	}
 
+	private IConnectivityBridge getConnectivityBridge() {
+		IConnectivityBridge connBridge 
+			= (IConnectivityBridge) _mainInfo
+				.getFeature("connectivity");
+		if (connBridge == null) {
+			return connBridge;
+		}
+		
+		if ( connBridge.isReady() == false ) {
+			if (connBridge.initialize(_mainInfo) != Status.OK) {
+				connBridge = null;
+			}
+		}
+		
+		return connBridge;
+	}
+
 	private Status checkInternetConnectivity() {
-		if (_parentContext == null) {
-			OLog.err("Not attached to an Android activity");
+		IConnectivityBridge connBridge = getConnectivityBridge();
+		if (connBridge == null) {
+			OLog.err("Connectivity Bridge unavailable");
 			return Status.FAILED;
 		}
 
-		ConnectivityManager cm = (ConnectivityManager) _parentContext
-				.getSystemService(Context.CONNECTIVITY_SERVICE);
-		NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
-		boolean isConnected = (activeNetwork != null && activeNetwork
-				.isConnected());
-
-		if (isConnected == false) {
+		if (connBridge.isConnected() == false) {
 			OLog.warn("No internet connectivity");
 			return Status.FAILED;
 		}
@@ -453,6 +543,14 @@ public class NetworkController extends AbstractController {
 					_queueLock.lock();
 					queueSize = _sendTaskQueue.size();
 					_queueLock.unlock();
+					
+					/* Unblock the await response thread with an
+					 *  interrupt if it exists */
+					_waitThreadLock.lock();
+					if (_awaitResponseThread != null) {
+						_awaitResponseThread.interrupt();
+					}
+					_waitThreadLock.unlock();
 				}
 			}
 

@@ -3,8 +3,6 @@ package net.oukranos.oreadv1.types;
 import java.util.ArrayList;
 import java.util.List;
 
-import android.util.Log;
-
 import net.oukranos.oreadv1.util.OreadLogger;
 
 public class DataStore {
@@ -20,12 +18,14 @@ public class DataStore {
 	
 	public Status add(String id, String type, Object obj) {
 		if ((id == null) || (type == null) || (obj == null)) {
-			OLog.err("Invalid input parameter/s");
+			OLog.err("Invalid input parameter/s" +
+					" in DataStore.add()");
 			return Status.FAILED;
 		}
 		
 		if (id.isEmpty() || type.isEmpty()) {
-			OLog.err("Invalid input parameter/s");
+			OLog.err("Blank input parameter/s" +
+					" in DataStore.add()");
 			return Status.FAILED;
 		}
 		
@@ -53,18 +53,21 @@ public class DataStore {
 		
 		/* Add this to the list */
 		_dataList.add(dataObj);
-		
+
+		OLog.dbg("Added object: " + dataObj.getId());
 		return Status.OK;
 	}
 	
 	public Status remove(String id) {
 		if (id == null) {
-			OLog.err("Invalid input parameter/s");
+			OLog.err("Invalid input parameter/s" +
+					" in DataStore.remove()");
 			return Status.FAILED;
 		}
 		
 		if (id.isEmpty()) {
-			OLog.err("Invalid input parameter/s");
+			OLog.err("Blank input parameter/s" +
+					" in DataStore.remove()");
 			return Status.FAILED;
 		}
 		
@@ -76,24 +79,27 @@ public class DataStore {
 		/* Remove the object matching the given identifier */
 		for (int idx = 0; idx < _dataList.size(); idx++) {
 			if (id.equals(_dataList.get(idx).getId()) == true) {
+				OLog.dbg("Removing object: " + _dataList.get(idx).getId());
 				_dataList.remove(idx);
 				return Status.OK;
 			}
 		}
 		
 		/* If no such object exists, return a failure status */
-		OLog.err("Failed to locate object with id: " + id);
+		//OLog.warn("Failed to locate object with id: " + id);
 		return Status.FAILED;
 	}
 	
 	public DataStoreObject retrieve(String id) {
 		if (id == null) {
-			OLog.err("Invalid input parameter/s");
+			OLog.err("Invalid input parameter/s" +
+					" in DataStore.retrieve()");
 			return null;
 		}
 		
 		if (id.isEmpty()) {
-			OLog.err("Invalid input parameter/s");
+			OLog.err("Blank input parameter/s" +
+					" in DataStore.retrieve()");
 			return null;
 		}
 		
@@ -104,21 +110,20 @@ public class DataStore {
 
 		/* Return the object matching the given identifier */
 		for (DataStoreObject dataObj : _dataList) {
-			Log.d("DEBUG", "Found object: " + dataObj.getId());
 			if (id.equals(dataObj.getId()) == true) {
 				return dataObj;
 			}
 		}
 		
 		/* If no such object exists, return a failure status */
-		OLog.err("Failed to locate object with id: " + id);
+		OLog.warn("Failed to locate object with id: " + id);
 		return null;
 	}
 	
 	public Object retrieveObject(String id) {
 		DataStoreObject dataObj = this.retrieve(id);
 		if (dataObj == null) {
-			OLog.err("Failed to retrieve data object");
+			OLog.warn("Failed to retrieve data object");
 			return null;
 		}
 		

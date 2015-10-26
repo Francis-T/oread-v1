@@ -19,6 +19,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.GestureDetector.SimpleOnGestureListener;
 import android.view.MotionEvent;
@@ -53,8 +54,8 @@ public class MainActivity extends Activity {
 		}
 		
 		/* Setup the swipe listener */
-		View view = this.findViewById(R.id.main_activity_layout);
 		final GestureDetector gestureDetect = new GestureDetector(this, new SwipeListener());
+		View view = this.findViewById(R.id.main_activity_layout);
 		view.setOnTouchListener( new OnTouchListener() {
 			@Override
 			public boolean onTouch(View v, MotionEvent event) {
@@ -116,7 +117,6 @@ public class MainActivity extends Activity {
 	/**********************************************************************/
 	private Status loadFragment(OreadFragment id) {
 		FragmentManager fm = getFragmentManager();
-		
 		FragmentTransaction ft = fm.beginTransaction();
 		
 		switch (id) {
@@ -131,6 +131,7 @@ public class MainActivity extends Activity {
 				
 				ft.setCustomAnimations(R.anim.slide_in_left, R.anim.slide_out_right);
 				ft.replace(R.id.placeholder, _logFragment, "YEAAART");
+				
 				_currentFragment = OreadFragment.LOGGING;
 				
 				break;
@@ -205,9 +206,11 @@ public class MainActivity extends Activity {
 			float startX = e1.getX();
 			float endX = e2.getX();
 			float dist = getAbsDistance(startX, endX);
+			Log.d("DEBUG","Event Started (" + startX + ", " + endX + " -> " + dist);
 			
 			// Rightward swipe
 			if ( ( startX > endX ) && (dist > THRESHOLD_SWIPE_DISTANCE) ) {
+				Log.d("DEBUG","Right swipe.");
 				OreadFragment fragId = getNextFragment(_currentFragment);
 				if (fragId != null) {
 					loadFragment(fragId);
@@ -216,6 +219,7 @@ public class MainActivity extends Activity {
 			
 			// Leftward swipe
 			if ( ( startX < endX ) && (dist > THRESHOLD_SWIPE_DISTANCE) ) {
+				Log.d("DEBUG","Left swipe.");
 				OreadFragment fragId = getPrevFragment(_currentFragment);
 				if (fragId != null) {
 					loadFragment(fragId);

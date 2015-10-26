@@ -66,9 +66,9 @@ public class ConditionEvaluator {
 			this.extractTokens(expr, condExprStr);
 			this.extractOperator(expr, condExprStr);
 			
-			OLog.info("Evaluating: " + condExprStr);
+			OLog.dbg("Evaluating: " + condExprStr);
 			result = expr.evaluate();
-			OLog.info("Result: " + result);
+			OLog.dbg("Result: " + result);
 			if (result == false) {
 				break;
 			}
@@ -123,17 +123,17 @@ public class ConditionEvaluator {
 		Pattern operatorPattern = Pattern.compile(REGEX_CONDITIONAL);
 		Matcher operatorMatcher = operatorPattern.matcher(exprStr);
 		
-		int operatorCount = 0;
+		//int operatorCount = 0;
 		if (operatorMatcher.find() != true) {
 			return;
 		}
 		int operStartIdx = operatorMatcher.start();
 		int operEndIdx = operatorMatcher.end();
 		
-		operatorCount++;
+		//operatorCount++;
 		
-		System.out.println("Operator#" + operatorCount + ": " + 
-				exprStr.substring(operStartIdx, operEndIdx));
+		//System.out.println("Operator#" + operatorCount + ": " + 
+		//		exprStr.substring(operStartIdx, operEndIdx));
 		
 		expr.setOperator(exprStr.substring(operStartIdx, operEndIdx));
 		
@@ -181,9 +181,9 @@ public class ConditionEvaluator {
 				return false;
 			}
 			
-			OLog.info("  Token#1:  " + token1.toString());
-			OLog.info("  Token#2:  " + token2.toString());
-			OLog.info("  Operator: " + operator.toString());
+			OLog.dbg("  Token#1:  " + token1.toString());
+			OLog.dbg("  Token#2:  " + token2.toString());
+			OLog.dbg("  Operator: " + operator.toString());
 			
 			switch(operator) {
 				case EQUAL_TO:
@@ -427,7 +427,7 @@ public class ConditionEvaluator {
 			this.id = tokenStr;
 			/* Check if the token has an equivalent in the data store */
 			if (this.id.charAt(0) == '$') {
-				OLog.info("Found data store object");
+				OLog.dbg("Found data store object");
 				String dataStoreId = this.id.substring(1);
 				if (_dataStore != null) {
 					DataStoreObject d = _dataStore.retrieve(dataStoreId);
@@ -440,7 +440,7 @@ public class ConditionEvaluator {
 					this.value = "spoopy";	//TODO
 				}
 			} else if (this.id.matches(REGEX_FUNCTION_STR)) {
-				OLog.info("Found function object");
+				OLog.dbg("Found function object");
 				
 				if (_methodEval != null) {
 					DataStoreObject d = _methodEval.evaluate(this.id);
@@ -453,7 +453,7 @@ public class ConditionEvaluator {
 					this.value = "spoopy";	//TODO
 				}
 			} else if (this.id.matches(REGEX_STRING_STR)) {
-				OLog.info("Found possible string");
+				OLog.dbg("Found possible string");
 				int startIdx = 1;
 				int endIdx = this.id.length() - 1;
 				String strValue = this.id.substring(startIdx, endIdx);
@@ -461,7 +461,7 @@ public class ConditionEvaluator {
 				this.type = "string";
 				this.value = strValue;
 			} else if(this.id.matches(REGEX_INTEGER_STR)) {
-				OLog.info("Found possible integer");
+				OLog.dbg("Found possible integer");
 				Integer intValue = null;
 				try {
 					intValue = Integer.parseInt(this.id);
@@ -472,7 +472,7 @@ public class ConditionEvaluator {
 				this.type = "integer";
 				this.value = intValue;
 			} else if(this.id.matches(REGEX_LONG_STR)) {
-				OLog.info("Found possible long");
+				OLog.dbg("Found possible long");
 				String longStr = this.id.replace("l", "");
 				Long longValue = null;
 				
@@ -484,7 +484,7 @@ public class ConditionEvaluator {
 				this.type = "long";
 				this.value = longValue;
 			} else if(this.id.matches(REGEX_FLOAT_STR)) {
-				OLog.info("Found possible float");
+				OLog.dbg("Found possible float");
 				String floatStr = this.id.replace("f", "");
 				Float floatValue = null;
 				try {
@@ -496,7 +496,7 @@ public class ConditionEvaluator {
 				this.type = "float";
 				this.value = floatValue;
 			} else if(this.id.matches(REGEX_DOUBLE_STR)) {
-				OLog.info("Found possible double");
+				OLog.dbg("Found possible double");
 				Double doubleValue = null;
 				
 				try {

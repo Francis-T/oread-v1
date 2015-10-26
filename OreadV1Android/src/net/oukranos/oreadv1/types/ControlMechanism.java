@@ -3,37 +3,29 @@ package net.oukranos.oreadv1.types;
 import java.util.Arrays;
 
 import net.oukranos.oreadv1.controller.BluetoothController;
+import net.oukranos.oreadv1.interfaces.IPersistentDataBridge;
 import net.oukranos.oreadv1.util.OreadLogger;
 
 public abstract class ControlMechanism {
 	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
+	protected static final OreadLogger OLog = OreadLogger.getInstance();
 	
-	private String _name = "";
-	private State _state = State.UNKNOWN;
-	private BluetoothController _btController = null;
-	private byte _dataBuffer[] = new byte[512];
-	private int _dataOffset = 0;
-	private ReceiveStatus _lastReceiveStatus = ReceiveStatus.UNKNOWN;
-	
-	private boolean _isBlocking = false;
-	private boolean _isStatusPollable = false;
-	private long _waitTimeout = 2000;
-	private long _pollTimeout = 2000;
+	/* Configurable properties */
+	private String 				_name = "";
+	private boolean 			_isBlocking = false;
+	private boolean 			_isStatusPollable = false;
+	private long 				_waitTimeout = 2000;
+	private long 				_pollTimeout = 2000;
 
-	public ControlMechanism(BluetoothController bluetooth) {
-		this._btController = bluetooth;
-	}
+	/* Internal properties */
+	private State 				_state = State.UNKNOWN;
+	private byte 				_dataBuffer[] = new byte[512];
+	private int 				_dataOffset = 0;
+	private ReceiveStatus 		_lastReceiveStatus = ReceiveStatus.UNKNOWN;
+	private BluetoothController 	_btController = null;
+	private IPersistentDataBridge	_pDataStore = null;
 
 	public Status initialize() {
-		// if (this._state == State.READY) {
-		// return Status.OK;
-		// }
-		if (this._btController == null) {
-			OLog.err("BluetoothController is null");
-			return Status.FAILED;
-		}
-
 		this._state = State.READY;
 
 		return Status.OK;
@@ -188,6 +180,24 @@ public abstract class ControlMechanism {
 
 	protected void setName(String name) {
 		this._name = name;
+		return;
+	}
+	
+	protected IPersistentDataBridge getPersistentDataBridge() {
+		return _pDataStore;
+	}
+
+	public void setPersistentDataBridge(IPersistentDataBridge dataBridge) {
+		this._pDataStore = dataBridge;
+		return;
+	}
+	
+	protected BluetoothController getBluetoothController() {
+		return _btController;
+	}
+
+	public void setBluetoothController(BluetoothController bluetoothController) {
+		this._btController = bluetoothController;
 		return;
 	}
 

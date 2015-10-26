@@ -12,15 +12,9 @@ import net.oukranos.oreadv1.types.Sensor;
 import net.oukranos.oreadv1.types.Sensor.ReceiveStatus;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
-import net.oukranos.oreadv1.util.OreadLogger;
 
-public class SensorArrayController extends AbstractController implements
-		SensorEventHandler {
-	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
-	
+public class SensorArrayController extends AbstractController implements SensorEventHandler {
 	private static SensorArrayController _sensorArrayController = null;
-	private MainControllerInfo _mainInfo = null;
 	
 	private BluetoothController _bluetoothController = null;
 	private WaterQualityData _sensorData = null;
@@ -38,10 +32,7 @@ public class SensorArrayController extends AbstractController implements
 	/*************************/
 	/** Initializer Methods **/
 	/*************************/
-	private SensorArrayController(MainControllerInfo mainInfo, BluetoothController bluetooth) {
-		this._mainInfo = mainInfo;
-		this._bluetoothController = bluetooth;
-		
+	private SensorArrayController() {
 		this.setType("sensors");
 		this.setName("water_quality");
 		return;
@@ -49,7 +40,8 @@ public class SensorArrayController extends AbstractController implements
 
 	public static SensorArrayController getInstance(MainControllerInfo mainInfo) {
 		if (mainInfo == null) {
-			OLog.err("Main controller info uninitialized or unavailable");
+			OLog.err("Invalid input parameter/s" +
+					" in SensorArrayController.getInstance()");
 			return null;
 		}
 		
@@ -61,8 +53,11 @@ public class SensorArrayController extends AbstractController implements
 		}
 		
 		if (_sensorArrayController == null) {
-			_sensorArrayController = new SensorArrayController(mainInfo, bluetooth);
+			_sensorArrayController = new SensorArrayController();
 		}
+		
+		_sensorArrayController._mainInfo = mainInfo;
+		_sensorArrayController._bluetoothController = bluetooth;
 		
 		return _sensorArrayController;
 	}
@@ -72,6 +67,33 @@ public class SensorArrayController extends AbstractController implements
 	/********************************/
 	@Override
 	public Status initialize(Object initializer) {
+		/* Initialize the sensors */
+		if (_phSensor == null) {
+			_phSensor = new PHSensor();
+		}
+
+		if (_do2Sensor == null) {
+			_do2Sensor = new DissolvedOxygenSensor();
+		}
+
+		if (_ecSensor == null) {
+			_ecSensor = new ConductivitySensor();
+		}
+
+		if (_tempSensor == null) {
+			_tempSensor = new TemperatureSensor();
+		}
+		
+		if (_turbiditySensor == null) {
+			_turbiditySensor = new TurbiditySensor();
+		}
+
+		this.setState(ControllerState.READY);
+		return Status.OK;
+	}
+
+	@Override
+	public Status start() {
 		/* Retrieve the water quality data buffer */
 		/* TODO Not sure if this is the best place to put this */
 		DataStore dataStore = _mainInfo.getDataStore();
@@ -87,32 +109,28 @@ public class SensorArrayController extends AbstractController implements
 			return Status.FAILED;
 		}
 		_sensorData = wqData;
+		OLog.info("Loading sensor data from: " + _sensorData.hashCode());
 		
 		/* Register our event handlers */
 		_bluetoothController.registerEventHandler(this);
+		_phSensor.setBluetoothController(_bluetoothController);
+		_do2Sensor.setBluetoothController(_bluetoothController);
+		_ecSensor.setBluetoothController(_bluetoothController);
+		_tempSensor.setBluetoothController(_bluetoothController);
+		_turbiditySensor.setBluetoothController(_bluetoothController);
+		return Status.OK;
+	}
 
-		/* Initialize the sensors */
-		if (_phSensor == null) {
-			_phSensor = new PHSensor(_bluetoothController);
-		}
-
-		if (_do2Sensor == null) {
-			_do2Sensor = new DissolvedOxygenSensor(_bluetoothController);
-		}
-
-		if (_ecSensor == null) {
-			_ecSensor = new ConductivitySensor(_bluetoothController);
-		}
-
-		if (_tempSensor == null) {
-			_tempSensor = new TemperatureSensor(_bluetoothController);
-		}
+	@Override
+	public Status stop() {
+		_bluetoothController.unregisterEventHandler(this);
+		_phSensor.setBluetoothController(null);
+		_do2Sensor.setBluetoothController(null);
+		_ecSensor.setBluetoothController(null);
+		_tempSensor.setBluetoothController(null);
+		_turbiditySensor.setBluetoothController(null);
 		
-		if (_turbiditySensor == null) {
-			_turbiditySensor = new TurbiditySensor(_bluetoothController);
-		}
-
-		this.setState(ControllerState.READY);
+		_sensorData = null;
 		return Status.OK;
 	}
 
@@ -173,7 +191,13 @@ public class SensorArrayController extends AbstractController implements
 			}
 			this.calibrateSensor(_turbiditySensor, paramStr);
 		} else if (shortCmdStr.equals("start") == true) {
-			this.writeInfo("Started");
+			this.start();
+			this.writeInfo("Command Performed: Start");
+			
+		} else if (shortCmdStr.equals("stop") == true) {
+			this.stop();
+			this.writeInfo("Command Performed: Stop");
+			
 		} else {
 			this.writeErr("Unknown or invalid command: " + shortCmdStr);
 		}
@@ -183,8 +207,8 @@ public class SensorArrayController extends AbstractController implements
 
 	@Override
 	public Status destroy() {
+		this.stop();
 		this.setState(ControllerState.UNKNOWN);
-		_bluetoothController.unregisterEventHandler(this);
 
 		return Status.OK;
 	}
@@ -194,7 +218,7 @@ public class SensorArrayController extends AbstractController implements
 	/********************/
 	public Status readSensor(Sensor s) {
 		if (this.getState() != ControllerState.READY) {
-			OLog.err("Invalid state for sensor read");
+			writeErr("Invalid state for sensor read");
 			return Status.FAILED;
 		}
 		
@@ -203,7 +227,7 @@ public class SensorArrayController extends AbstractController implements
 
 		if (this.getState() == ControllerState.READY) {
 			if (performSensorRead(s) != Status.OK) {
-				OLog.err("Failed to receive from " + s.getName());
+				writeErr("Failed to receive from " + s.getName());
 				return Status.FAILED;
 			}
 
@@ -218,7 +242,7 @@ public class SensorArrayController extends AbstractController implements
 		}
 
 		_sensorData.updateTimestamp();
-		OLog.info("Read " + s.getName() + " finished.");
+		writeInfo("Read " + s.getName() + " finished. Stored in " + _sensorData.hashCode() );
 		return Status.OK;
 	}
 	
@@ -430,8 +454,7 @@ public class SensorArrayController extends AbstractController implements
 		private static final String INFO_CMD_STR = "FORCE pH I";
 		private static final String CALIBRATE_CMD_STR = "FORCE pH Cal,";
 
-		public PHSensor(BluetoothController bluetooth) {
-			super(bluetooth);
+		public PHSensor() {
 			this.setName("pH Sensor");
 			
 			/* Configure the response matchers */ // TODO Should be abstracted
@@ -491,8 +514,7 @@ public class SensorArrayController extends AbstractController implements
 		private static final String INFO_CMD_STR = "FORCE DO2 I";
 		private static final String CALIBRATE_CMD_STR = "FORCE DO2 Cal";
 
-		public DissolvedOxygenSensor(BluetoothController bluetooth) {
-			super(bluetooth);
+		public DissolvedOxygenSensor() {
 			this.setName("Dissolved Oxygen Sensor");
 
 			/* Configure the response matchers */ // TODO Should be abstracted
@@ -563,8 +585,7 @@ public class SensorArrayController extends AbstractController implements
 		private static final String CALIBRATE_CMD_STR = "FORCE EC Cal,";
 
 
-		public ConductivitySensor(BluetoothController bluetooth) {
-			super(bluetooth);
+		public ConductivitySensor() {
 			this.setName("Conductivity Sensor");
 
 			/* Configure the response matchers */ // TODO Should be abstracted
@@ -644,8 +665,7 @@ public class SensorArrayController extends AbstractController implements
 		private static final String INFO_CMD_STR = "FORCE TM X";
 		private static final String CALIBRATE_CMD_STR = "FORCE TM X";
 
-		public TemperatureSensor(BluetoothController bluetooth) {
-			super(bluetooth);
+		public TemperatureSensor() {
 			this.setName("Temperature Sensor");
 
 			/* Configure the response matchers */ // TODO Should be abstracted
@@ -737,8 +757,7 @@ public class SensorArrayController extends AbstractController implements
 		private static final String INFO_CMD_STR = "FORCE TU X";
 		private static final String CALIBRATE_CMD_STR = "FORCE TU X";
 
-		public TurbiditySensor(BluetoothController bluetooth) {
-			super(bluetooth);
+		public TurbiditySensor() {
 			this.setName("Turbidity Sensor");
 
 			/* Configure the response matchers */ // TODO Should be abstracted

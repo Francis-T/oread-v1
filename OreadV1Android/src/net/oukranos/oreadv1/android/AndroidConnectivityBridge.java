@@ -6,19 +6,16 @@ import android.net.NetworkInfo;
 import android.telephony.PhoneStateListener;
 import android.telephony.SignalStrength;
 import android.telephony.TelephonyManager;
-import net.oukranos.oreadv1.interfaces.ConnectivityBridgeIntf;
-import net.oukranos.oreadv1.interfaces.DeviceIdentityIntf;
+import net.oukranos.oreadv1.interfaces.bridge.IConnectivityBridge;
+import net.oukranos.oreadv1.interfaces.bridge.IDeviceInfoBridge;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OreadLogger;
 
-public class AndroidConnectivityBridge implements DeviceIdentityIntf, ConnectivityBridgeIntf {
-	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
-	
+public class AndroidConnectivityBridge 	extends 	AndroidBridgeImpl 
+										implements 	IDeviceInfoBridge, 
+													IConnectivityBridge {
 	private static AndroidConnectivityBridge _androidConnectivityBridge = null;
 	private ConnectivityManager _connMgr = null;
 	private TelephonyManager _phoneMgr = null;
-	private Context _context = null; 
 	private SignalStrengthListener _signalStrListener = null;
 	
 	private int _gsmSignalStr = 0;
@@ -27,6 +24,16 @@ public class AndroidConnectivityBridge implements DeviceIdentityIntf, Connectivi
 	
 	private AndroidConnectivityBridge() {
 		return;
+	}
+
+	@Override
+	public String getId() {
+		return "connectivity";
+	}
+
+	@Override
+	public String getPlatform() {
+		return "android";
 	}
 
 	public static AndroidConnectivityBridge getInstance() {
@@ -38,13 +45,15 @@ public class AndroidConnectivityBridge implements DeviceIdentityIntf, Connectivi
 	}
 	
 	public Status initialize(Object initObject) {
-		if (initObject == null) {
+		/* Attempt to load the initializer object */
+		/*  Note: This method is in AndroidBridgeImpl */
+		if (loadInitializer(initObject) != Status.OK) {
+			OLog.err("Failed to initialize " + getPlatform() + "." + getId());
 			return Status.FAILED;
 		}
 		
-		_context = (Context) initObject;
-		_connMgr = this.getConnManager();
-		_phoneMgr = this.getPhoneManager();
+		_connMgr = this.getConnManager(_context);
+		_phoneMgr = this.getPhoneManager(_context);
 
 		if (_signalStrListener == null) {
 			this.startSignalListener();
@@ -73,7 +82,7 @@ public class AndroidConnectivityBridge implements DeviceIdentityIntf, Connectivi
 		}
 		
 		if (_phoneMgr == null) {
-			_phoneMgr = this.getPhoneManager();
+			_phoneMgr = this.getPhoneManager(_context);
 		}
 		
 		return (_phoneMgr.getDeviceId());
@@ -88,7 +97,7 @@ public class AndroidConnectivityBridge implements DeviceIdentityIntf, Connectivi
 		}
 		
 		if (_connMgr == null) {
-			_connMgr = this.getConnManager();
+			_connMgr = this.getConnManager(_context);
 		}
 		
 		NetworkInfo activeNetwork = _connMgr.getActiveNetworkInfo();
@@ -116,7 +125,7 @@ public class AndroidConnectivityBridge implements DeviceIdentityIntf, Connectivi
 		}
 		
 		if (_connMgr == null) {
-			_connMgr = this.getConnManager();
+			_connMgr = this.getConnManager(_context);
 		}
 		NetworkInfo activeNetwork = _connMgr.getActiveNetworkInfo();
 		if (activeNetwork == null) {
@@ -171,16 +180,16 @@ public class AndroidConnectivityBridge implements DeviceIdentityIntf, Connectivi
 	
 	
 	/** Private Methods **/
-	private ConnectivityManager getConnManager() {
-		if (_context == null) {
+	private ConnectivityManager getConnManager(Context context) {
+		if (context == null) {
 			OLog.err("Invalid context");
 			return null;
 		}
 		return (ConnectivityManager) _context.getSystemService(Context.CONNECTIVITY_SERVICE);
 	}
 	
-	private TelephonyManager getPhoneManager() {
-		if (_context == null) {
+	private TelephonyManager getPhoneManager(Context context) {
+		if (context == null) {
 			OLog.err("Invalid context");
 			return null;
 		}
@@ -195,7 +204,7 @@ public class AndroidConnectivityBridge implements DeviceIdentityIntf, Connectivi
 		}
 		
 		if (_phoneMgr == null) {
-			_phoneMgr = this.getPhoneManager();
+			_phoneMgr = this.getPhoneManager(_context);
 		}
 		
 		_signalStrListener = new SignalStrengthListener();
@@ -211,7 +220,7 @@ public class AndroidConnectivityBridge implements DeviceIdentityIntf, Connectivi
 		}
 		
 		if (_phoneMgr == null) {
-			_phoneMgr = this.getPhoneManager();
+			_phoneMgr = this.getPhoneManager(_context);
 		}
 		
 		if (_signalStrListener == null) {

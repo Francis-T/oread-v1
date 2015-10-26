@@ -1,6 +1,7 @@
 package net.oukranos.oreadv1.fragments;
 
 import net.oukranos.oreadv1.R;
+import net.oukranos.oreadv1.MainActivity.OreadFragment;
 import net.oukranos.oreadv1.interfaces.OreadServiceApi;
 import net.oukranos.oreadv1.interfaces.OreadServiceListener;
 import net.oukranos.oreadv1.types.ControllerState;
@@ -13,6 +14,7 @@ import android.app.Fragment;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.RemoteException;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -62,7 +64,7 @@ public class FragmentLogs extends Fragment {
 
 		/* Setup the double tap listener */
 		final GestureDetector gestureDetect = 
-				new GestureDetector(_parent, new DoubleTapListener());
+				new GestureDetector(_parent, new TouchListener());
 		
 		_logView = (TextView) _viewRef.findViewById(R.id.txt_log_full);
 		_logView.setOnTouchListener( new OnTouchListener() {
@@ -120,7 +122,7 @@ public class FragmentLogs extends Fragment {
 		return;
 	}
 	
-	private class DoubleTapListener extends SimpleOnGestureListener {
+	private class TouchListener extends SimpleOnGestureListener {
 		@Override
 		public boolean onDoubleTapEvent(MotionEvent e) {
 			if (_parent != null) {
@@ -129,6 +131,12 @@ public class FragmentLogs extends Fragment {
 			return super.onDoubleTapEvent(e);
 		}
 		
+		@Override
+        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
+                float velocityY) {
+			Log.d("DEBUG", "FragmentLog fling");
+        	return super.onFling(e1, e2, velocityX, velocityY);
+        }
 	}
 	  
 	/********************/

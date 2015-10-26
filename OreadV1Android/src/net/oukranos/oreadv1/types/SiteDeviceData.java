@@ -129,10 +129,10 @@ public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 
 	
 	public static void main(String args[]) {
-		SiteDeviceReportData sd1 = new SiteDeviceReportData("DO2", "mg/L", 7.00f, "OK");
+		SiteDeviceReportData sd1 = new SiteDeviceReportData("DO2", "Water", 7.00f, "OK");
 		System.out.println("JSON: " + sd1.encodeToJsonString());
 
-		SiteDeviceReportData sd2 = new SiteDeviceReportData("DO2", "mg/L", 9.43f, "OK");
+		SiteDeviceReportData sd2 = new SiteDeviceReportData("DO2", "Water", 9.43f, "OK");
 		System.out.println("JSON: " + sd2.encodeToJsonString());
 		
 		SiteDeviceData sdat = new SiteDeviceData("test_device_id", "live");

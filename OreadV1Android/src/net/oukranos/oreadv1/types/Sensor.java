@@ -26,14 +26,7 @@ public abstract class Sensor {
 	protected String R_RESP_OK  	= "";
 	protected String R_RESP_ERR 	= "";
 
-	public Sensor(BluetoothController bluetooth) {
-		this._btController = bluetooth;
-	}
-
 	public Status initialize() {
-		// if (this._state == State.READY) {
-		// return Status.OK;
-		// }
 		if (this._btController == null) {
 			OLog.err("BluetoothController is null");
 			return Status.FAILED;
@@ -190,6 +183,11 @@ public abstract class Sensor {
 	
 	public void setTimeout(long timeout) {
 		this._timeout = timeout;
+		return;
+	}
+	
+	public void setBluetoothController(BluetoothController bluetoothController) {
+		this._btController = bluetoothController;
 		return;
 	}
 	

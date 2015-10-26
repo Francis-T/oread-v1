@@ -1,8 +1,9 @@
-package net.oukranos.oreadv1.interfaces;
+package net.oukranos.oreadv1.interfaces.bridge;
 
+import net.oukranos.oreadv1.interfaces.BluetoothEventHandler;
 import net.oukranos.oreadv1.types.Status;
 
-public interface BluetoothBridgeIntf {
+public interface IBluetoothBridge extends IFeatureBridge {
 
 	public Status initialize(Object initObject);
 	public Status connectDeviceByAddress(String address);

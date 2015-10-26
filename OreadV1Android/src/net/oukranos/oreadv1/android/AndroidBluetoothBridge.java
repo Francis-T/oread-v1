@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import android.annotation.TargetApi;
 import android.bluetooth.BluetoothAdapter;
@@ -20,23 +22,20 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 
-import net.oukranos.oreadv1.interfaces.BluetoothBridgeIntf;
 import net.oukranos.oreadv1.interfaces.BluetoothEventHandler;
+import net.oukranos.oreadv1.interfaces.bridge.IBluetoothBridge;
 import net.oukranos.oreadv1.types.Status;
-import net.oukranos.oreadv1.util.OreadLogger;
 
-public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
-	/* Get an instance of the OreadLogger class to handle logging */
-	private static final OreadLogger OLog = OreadLogger.getInstance();
-	
+public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBluetoothBridge {
 	private final String NAME_SECURE = "BluetoothSecure";
 	private final UUID MY_UUID_SECURE = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 	private final String NAME_INSECURE = "BluetoothInsecure";
 	private final UUID MY_UUID_INSECURE = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 	
+	private static AndroidBluetoothBridge _androidBluetoothBridge = null;
+	
 	private BluetoothAdapter _bluetoothAdapter = null;
 	private BroadcastReceiver _broadcastReceiver = null;
-	private Context _parentContext = null;
 
 	/* Device list maps */
 	private HashMap<String, String> _pairedDevices = null;
@@ -46,11 +45,42 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 	private BluetoothEventHandler _eventHandler = null;
 	private BluetoothConnectThread _bluetoothConnectThread = null;
 	private BluetoothListenerThread _bluetoothListener = null;
+
+	private Lock _connThreadLock = null;
+	private Lock _listenThreadLock = null;
+	
+	private AndroidBluetoothBridge() {
+		return;
+	}
+	
+	public static AndroidBluetoothBridge getInstance() {
+		if (_androidBluetoothBridge == null) {
+			_androidBluetoothBridge =  new AndroidBluetoothBridge();
+		}
+		
+		return _androidBluetoothBridge;
+	}
+
+	@Override
+	public String getId() {
+		return "bluetooth";
+	}
+
+	@Override
+	public String getPlatform() {
+		return "android";
+	}
 	
 	@Override
 	public Status initialize(Object initObject) {
+		/* Attempt to load the initializer object */
+		/*  Note: This method is in AndroidBridgeImpl */
+		if (loadInitializer(initObject) != Status.OK) {
+			OLog.err("Failed to initialize " + getPlatform() + "." + getId());
+			return Status.FAILED;
+		}
+		
 		_bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-		_parentContext = (Context) initObject;
 		
 		if ( _bluetoothAdapter == null ) {
 			OLog.err("Could not obtain a Bluetooth adapter");
@@ -64,10 +94,18 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 //			(enableBtIntent, BLUETOOTH_ENABLE_REQUEST); //TODO consider removing?
 			return Status.FAILED;
 		}
+
+		_connThreadLock = new ReentrantLock();
+		_listenThreadLock = new ReentrantLock();
 		
 		setupDeviceLists();
 		
-		return (this.start());
+		if (start() != Status.OK) {
+			destroy();
+			return Status.FAILED;
+		}
+		
+		return Status.OK;
 	}
 
 	@Override
@@ -89,6 +127,10 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 			OLog.err("Invalid Bluetooth device address");
 			return Status.FAILED;
 		}
+		
+		/* Prevent other threads from manipulating the conn thread 
+		 * 	while we are still connecting */
+		_connThreadLock.lock();
 		
 		if (_bluetoothConnectThread != null) {
 			if (_bluetoothConnectThread.getDeviceAddress() != address) {
@@ -112,6 +154,8 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 			e.printStackTrace();
 		}
 		
+		_connThreadLock.unlock();
+		
 		/* Check if the address being connected to is already in the
 		 *  current connections list. If not, the connect operation
 		 *  was unsuccessful. */
@@ -127,6 +171,21 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 
 	@Override
 	public Status connectDeviceByName(String name) {
+		if (_pairedDevices == null) {
+			OLog.err("Paired devices list unavailable");
+			return Status.FAILED;
+		}
+		
+		if (_discoveredDevices == null) {
+			OLog.err("Discovered devices list unavailable");
+			return Status.FAILED;
+		}
+		
+		if (_currentConnections == null) {
+			OLog.err("Current connection list unavailable");
+			return Status.FAILED;
+		}
+		
 		String address = "";
 		if (_pairedDevices.containsKey(name)) {
 			address = _pairedDevices.get(name);
@@ -162,7 +221,14 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 
 	@Override
 	public Status destroy() {
-		return (this.stop());
+		if (stop() != Status.OK)
+		{
+			OLog.err("Failed to destroy BluetoothBridge");
+		}
+		
+		unloadInitializers();
+		
+		return Status.OK;
 	}
 
 	@Override
@@ -175,6 +241,10 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 	/** Private Methods **/
 	/*********************/
 	private Status start() {
+		/* Prevent other threads from manipulating the listen thread 
+		 * 	while we are still setting it up */
+		_listenThreadLock.lock();
+		
 		// start or re-start
 		if (_bluetoothListener != null) {
 			this.stop();
@@ -183,13 +253,16 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 		_bluetoothListener = new BluetoothListenerThread(true);
 		_bluetoothListener.start();
 		
+		/* Release the lock on the listen thread */
+		_listenThreadLock.unlock();
+		
 		if (_broadcastReceiver == null) {
 			_broadcastReceiver = new BluetoothBroadcastReceiver();
 		}
 		
-		_parentContext.registerReceiver(_broadcastReceiver, 
+		_context.registerReceiver(_broadcastReceiver, 
 				new IntentFilter(BluetoothDevice.ACTION_FOUND));
-		_parentContext.registerReceiver(_broadcastReceiver, 
+		_context.registerReceiver(_broadcastReceiver, 
 				new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED));
 		
 		this.getPairedDeviceNames();
@@ -199,10 +272,13 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 	
 	private Status stop() {
 		if (_broadcastReceiver != null) {
-			_parentContext.unregisterReceiver(_broadcastReceiver);
+			_context.unregisterReceiver(_broadcastReceiver);
 			_broadcastReceiver = null;
 		}
-		
+
+		/* Prevent other threads from manipulating the listen thread 
+		 * 	while we are closing it */
+		_listenThreadLock.lock();
 		if (_bluetoothListener != null) {
 			OLog.info("Terminating Bluetooth Listener Thread...");
 			_bluetoothListener.cancel();
@@ -212,7 +288,12 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 				OLog.warn("_bluetoothListener join() interrupted");
 			}
 		}
-	
+		/* Release the lock on the listen thread */
+		_listenThreadLock.unlock();
+
+		/* Prevent other threads from manipulating the conn thread 
+		 * 	while we are closing it */
+		_connThreadLock.lock();
 		if (_bluetoothConnectThread != null) {
 			OLog.info("Terminating Bluetooth Connect Thread...");
 			_bluetoothConnectThread.cancel();
@@ -222,6 +303,8 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 				OLog.warn("_btConnectThread join() interrupted");
 			}
 		}
+		/* Release the lock on the listen thread */
+		_connThreadLock.unlock();
 	
 		if (_currentConnections != null) {
 			for (String key : _currentConnections.keySet()) {
@@ -302,7 +385,8 @@ public class AndroidBluetoothBridge implements BluetoothBridgeIntf {
 	
 	private Status removeConnection(BluetoothConnection conn){
 		if (conn == null) {
-			OLog.err("Invalid input parameter");
+			OLog.err("Invalid input parameter/s" +
+					" in AndroidBluetoothBridge.removeConnection()");
 			return Status.FAILED;
 		}
 		

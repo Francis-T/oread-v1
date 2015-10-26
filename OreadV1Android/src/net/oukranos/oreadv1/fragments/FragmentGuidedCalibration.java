@@ -410,9 +410,9 @@ public class FragmentGuidedCalibration extends Fragment implements OnItemClickLi
 										"comm.bluetooth.start",
 										"comm.bluetooth.connectByName?HC-05",
 										"sensors.water_quality.start",
-										"sensors.water_quality.calibratePH?mid,7.2",
+										"sensors.water_quality.calibratePH?mid,7.01",
 										"sensors.water_quality.calibrateDO?0",
-										"sensors.water_quality.calibrateEC?low,27200",
+										"sensors.water_quality.calibrateEC?low,27740",
 										"2000",
 										"" };
 				
@@ -452,8 +452,8 @@ public class FragmentGuidedCalibration extends Fragment implements OnItemClickLi
 										"comm.bluetooth.start",
 										"comm.bluetooth.connectByName?HC-05",
 										"sensors.water_quality.start",
-										"sensors.water_quality.calibratePH?high,10.20",
-										"sensors.water_quality.calibrateEC?high,115000",
+										"sensors.water_quality.calibratePH?high,9.95",
+										"sensors.water_quality.calibrateEC?high,104500",
 										"2000",
 										"" };
 				

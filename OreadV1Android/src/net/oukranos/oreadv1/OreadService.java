@@ -1,77 +1,58 @@
 package net.oukranos.oreadv1;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.List;
-import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import net.oukranos.oreadv1.android.AndroidBluetoothBridge;
+import net.oukranos.oreadv1.android.AndroidCameraBridge;
 import net.oukranos.oreadv1.android.AndroidConnectivityBridge;
 import net.oukranos.oreadv1.android.AndroidInternetBridge;
 import net.oukranos.oreadv1.android.AndroidStoredDataBridge;
 import net.oukranos.oreadv1.controller.MainController;
 import net.oukranos.oreadv1.interfaces.CameraControlIntf;
 import net.oukranos.oreadv1.interfaces.CapturedImageMetaData;
+import net.oukranos.oreadv1.interfaces.IPersistentDataBridge;
 import net.oukranos.oreadv1.interfaces.MainControllerEventHandler;
 import net.oukranos.oreadv1.interfaces.OreadServiceApi;
 import net.oukranos.oreadv1.interfaces.OreadServiceListener;
+import net.oukranos.oreadv1.interfaces.bridge.ICameraBridge;
 import net.oukranos.oreadv1.manager.ConfigManager;
-import net.oukranos.oreadv1.manager.FilesystemManager.FSMan;
 import net.oukranos.oreadv1.types.CameraTaskType;
 import net.oukranos.oreadv1.types.ControllerState;
+import net.oukranos.oreadv1.types.DataStore;
+import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.OreadServiceControllerStatus;
 import net.oukranos.oreadv1.types.OreadServiceWaterQualityData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
 import net.oukranos.oreadv1.types.config.Configuration;
 import net.oukranos.oreadv1.util.OreadLogger;
-import net.oukranos.oreadv1.util.OreadTimestamp;
 
 import android.annotation.TargetApi;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
-import android.graphics.PixelFormat;
-import android.graphics.Rect;
-import android.hardware.Camera;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Environment;
 import android.os.IBinder;
 import android.os.RemoteException;
-import android.util.Log;
-import android.view.WindowManager;
 
 @TargetApi(Build.VERSION_CODES.ICE_CREAM_SANDWICH)
 public class OreadService extends Service implements MainControllerEventHandler, CameraControlIntf  {
 	/* Get an instance of the OreadLogger class to handle logging */
 	private static final OreadLogger OLog = OreadLogger.getInstance();
 	
-	private static final int 	DEFAULT_PICTURE_WIDTH  = 640;
-	private static final int 	DEFAULT_PICTURE_HEIGHT = 480;
-	private static final String DEFAULT_DEVICE_CONFIG_URL_BASE = "http://miningsensors.info/deviceconf";
-	
 	private final String _root_sd = Environment.getExternalStorageDirectory().toString();
 	private final String _savePath = _root_sd + "/OreadPrototype";
 	private final String _defaultConfigFile = (_savePath + "/oread_config.xml");
 	
 	private MainController _mainController = null;
-	private AndroidInternetBridge _networkBridge = null;
-	private AndroidConnectivityBridge _connBridge = null;
+	private MainControllerInfo _mainInfo = null;
 	
 	private PullDataTask _pullDataTask = null;
-	private CameraControlTask _cameraControlTask = null;
 
-	private Camera _camera = null;
-	private CameraPreview _cameraPreview = null;
-	private Thread _cameraCaptureThread = null;
-	private WindowManager _wm = null;
-	
 	private String _originator = null;
 	private String _directive = null;
 	OreadServiceWakeReceiver _wakeAlarm = null;
@@ -114,19 +95,6 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		if ( this.isWakeTriggered() == true ) {
 			OLog.info("OreadService onStartCommand() triggers service activation");
 			activateService();
-			_state = ServiceState.ACTIVE;
-		}
-		
-		/* Start the device bridge interfaces */
-		if (_connBridge == null) {
-			_connBridge = AndroidConnectivityBridge.getInstance();
-		}
-		_connBridge.initialize((Context)this);
-
-		/* Update the config file if a new version exists on the remote server */
-		ConfigManager cfgMan = ConfigManager.getInstance();
-		if (cfgMan.runConfigFileUpdate((Context)this) != Status.OK) {
-			OLog.info("Config File Update Failed");
 		}
 		
 		OLog.info("OreadService onStartCommand() finished");
@@ -189,6 +157,12 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	public void onFinish() {
 		_originator = null;
 		_directive = null;
+
+		try {
+			Thread.sleep(5000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
 		
 		/* Attempt to deactivate the service if possible */
 		deactivateService();
@@ -222,20 +196,108 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	/**  Private Methods                                                 **/
 	/**********************************************************************/
 	private Status initializeMainController() {
+		// TODO Handle the case where the main controller has already been started
+		
+		/* Setup the MainControllerInfo object */
+        _mainInfo = getMainControllerInfo();
+        
+		/* Instantiate the MainController if it hasn't been yet */
 		if (_mainController == null) {
-			ConfigManager cfgMan = ConfigManager.getInstance();
-			Configuration config = cfgMan.getConfig(_defaultConfigFile);
-					
-//					;getLoadedConfig();
-//			if (config == null) {
-//				OLog.warn("Invalid config file");
-//				config = cfgMan.getConfig(this._defaultConfigFile);
-//			}
-			
-			_mainController = MainController.getInstance(this);
-			_mainController.registerEventHandler(this);
-			_mainController.initialize(config);
+			_mainController = MainController.getInstance(null); // TODO 
 		}
+		
+        if (_mainController.getState() == ControllerState.INACTIVE) { // TODO
+            _mainController.start();
+            
+            OLog.info("OreadService MainController Started");
+            return Status.OK;
+        }
+
+		_mainController.initialize(_mainInfo);
+		_mainController.registerEventHandler(this);
+        
+        OLog.info("OreadService MainController Initialized");
+		
+		return Status.OK;
+	}
+	
+	private MainControllerInfo getMainControllerInfo() {
+        // TODO What if MainControllerInfo already exists?
+		MainControllerInfo mainInfo = new MainControllerInfo();
+
+		mainInfo.setDataStore(new DataStore());
+		mainInfo.setContext(this);
+		
+		/* Instantiate the Android Bridge objects */
+		AndroidBluetoothBridge bluetoothBridge =
+				AndroidBluetoothBridge.getInstance();
+		AndroidCameraBridge cameraBridge =
+				AndroidCameraBridge.getInstance();
+		AndroidConnectivityBridge connBridge =
+				AndroidConnectivityBridge.getInstance();
+		AndroidInternetBridge internetBridge = 
+				AndroidInternetBridge.getInstance();
+		AndroidStoredDataBridge storedDataBridge = 
+				AndroidStoredDataBridge.getInstance();
+		
+//		if (bluetoothBridge.initialize(mainInfo) != Status.OK) {
+//			OLog.warn("Failed to initialize BluetoothBridge");
+//		}
+//		if (cameraBridge.initialize(mainInfo) != Status.OK) {
+//			OLog.warn("Failed to initialize CameraBridge");
+//		}
+//		
+//		if (connBridge.initialize(mainInfo) != Status.OK) {
+//			OLog.warn("Failed to initialize ConnectivityBridge");
+//		}
+//		
+//		if (internetBridge.initialize(mainInfo) != Status.OK) {
+//			OLog.warn("Failed to initialize InternetBridge");
+//		}
+//		
+//		if (storedDataBridge.initialize(mainInfo) != Status.OK) {
+//			OLog.warn("Failed to initialize StoredDataBridge");
+//		}
+		
+		mainInfo.addFeature(bluetoothBridge);
+		mainInfo.addFeature(cameraBridge);
+		mainInfo.addFeature(connBridge);
+		mainInfo.addFeature(internetBridge);
+		mainInfo.addFeature(storedDataBridge);
+		
+		loadConfig(mainInfo);
+		
+		return mainInfo;
+	}
+	
+	private Status loadConfig(MainControllerInfo mainInfo) {
+		if (mainInfo == null) {
+			OLog.err("MainInfo is NULL in loadConfig()");
+			return Status.FAILED;
+		}
+		
+		/* Get a ConfigManager instance */
+		ConfigManager cfgMan = ConfigManager.getInstance();
+
+		/* Update the config file if a new version exists on the remote server */
+		if (cfgMan.initialize(mainInfo) == Status.OK) {
+			if (cfgMan.runConfigFileUpdate() != Status.OK) {
+				OLog.info("Config File Update Failed");
+			}
+		} else {
+			OLog.warn("Failed to initialize ConfigManager");
+		}
+		
+		/* Get the loaded config file from the ConfigManager */
+		//Configuration config = cfgMan.getConfig(_defaultConfigFile); // TODO This should be getLoadedConfig();
+		Configuration config = cfgMan.getLoadedConfig();
+		if (config == null) {
+			OLog.warn("Invalid config file");
+			config = cfgMan.getConfig(this._defaultConfigFile);
+		}
+		
+		mainInfo.setConfig(config);
+		
 		return Status.OK;
 	}
 
@@ -255,10 +317,15 @@ public class OreadService extends Service implements MainControllerEventHandler,
         return true;
     }
 
-    private Status activateService() {
-        initializeMainController();
+	private Status activateService() {
+		if (_mainController != null) {
+	        OLog.info("MainController State: " + _mainController.getState().toString());
+		}
+		
+        initializeMainController(); // TODO Possibly redundant
         
-        if (_mainController.getState() == ControllerState.UNKNOWN) {
+        // TODO What about other MainController states?
+        if (_mainController.getState() == ControllerState.INACTIVE) {
             _mainController.start();
             
             OLog.info("OreadService MainController Started");
@@ -308,136 +375,83 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		}
 		return Status.OK;
 	}
+
 	
-
-	/********************/
-	/** Camera Methods **/
-	/********************/
-	@SuppressWarnings("unused")
-	private CameraState _cameraState = CameraState.INACTIVE;
-	private Status cameraInitialize() {
-		/* Initialize the camera */
-		if ( _camera == null ) {
-			try {
-				_camera = Camera.open();
-				Camera.Parameters _cameraParams = _camera.getParameters();
-				_cameraParams.setPictureSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
-				_cameraParams.setPreviewSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
-				_cameraParams.setRotation(90);
-				_cameraParams.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
-				
-				/* Define the camera focus areas */
-				Camera.Area focusArea = new Camera.Area(new Rect(-167,0,167,562), 1000);
-				List<Camera.Area> focusAreas = new ArrayList<Camera.Area>();
-				focusAreas.add(focusArea);
-				
-				_cameraParams.setFocusAreas(focusAreas);
-				_camera.setParameters(_cameraParams);
-				
-			} catch (Exception e) {
-				OLog.err("Error: Could not open camera.");
-				return Status.FAILED;
-			}
-		}
-
-		/* Initialize the invisible preview */
-		if (_cameraPreview == null) {
-			_cameraPreview = new CameraPreview(this, _camera);
-
-	        /** START: EXPERIMENTAL: preview on a service **/
-	        _wm = (WindowManager) this
-	                .getSystemService(Context.WINDOW_SERVICE);
-            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                    1, 1, //Must be at least 1x1
-                    WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY,
-                    0,
-                    //Don't know if this is a safe default
-                    PixelFormat.UNKNOWN);
-
-            //Don't set the preview visibility to GONE or INVISIBLE
-            _wm.addView(_cameraPreview, params);
-	        /** END EXPERIMENTAL: preview on a service **/
-			//preview.addView(_cameraPreview); // TODO OLD
-		} else {
-			OLog.warn("Camera preview is not null!");
-			_camera.startPreview();
+	private void reloadOldWaterQualityData() {
+		String oldWaterQualityData = null;
+		
+		oldWaterQualityData = getOldWaterQualityData();
+		if (oldWaterQualityData == null) {
+			return;
 		}
 		
-		_cameraState = CameraState.READY;
-		
-		return Status.OK;
-	}
-	
-	private Status cameraCapture(CapturedImageMetaData container) {	
-		_cameraCaptureThread = Thread.currentThread();
-		SavePictureCallback lProcessPic = new SavePictureCallback(container);
-		try {
-			_camera.takePicture(null, null, lProcessPic);
-		} catch (Exception e) {
-			OLog.err("Error: " + e.getMessage());
-		}
 
-		_cameraState = CameraState.BUSY;
+		/* Find each sequence within the string that matches */
+		Pattern dataPattern = Pattern.compile("[-]*[0-9]+\\.*[0-9]*");
+		Matcher dataMatcher = dataPattern.matcher(oldWaterQualityData);
+		int matchCount = 0;
+		double matchValue[] = new double[5];
 		
-		/* Wait until the camera capture is received */	
-		try {
-			Thread.sleep(5000);
-		} catch (InterruptedException e) {
-			OLog.info("Interrupted");
+		while(dataMatcher.find()) {
+			int startIdx = dataMatcher.start();
+			int endIdx = dataMatcher.end();
+			
+			String matchStr = oldWaterQualityData.substring(startIdx, endIdx);
+			
+			matchValue[matchCount] = Double.parseDouble(matchStr);
+					
+			matchCount++;
 		}
 		
-		_cameraCaptureThread = null;
-		_cameraState = CameraState.READY;
-		
-		return Status.OK;
-	}
-	
-	private Status cameraShutdown() {
-		if (_camera != null) {
-			if (_wm != null) {
-				try {
-					_wm.removeView(_cameraPreview);
-				} catch (Exception e) {
-					OLog.err("Known exception occurred: " + e.getMessage());
-				}
-				
-				_cameraPreview = null;
-				_wm = null;
-			}
-			_camera.release();
-			_camera = null;
-		}
-		
-		_cameraState = CameraState.INACTIVE;
-		
-		return Status.OK;
-	}
-
-	private String getCaptureFilename() {
-		return ( "OREAD_Image" + 
-                 "_" + OreadTimestamp.getDateString() + 
-                 "_" + OreadTimestamp.getTimestampString() + 
-                 ".jpg" );
-	}
-	
-	private void savePictureToFile(CapturedImageMetaData container, byte[] data) {
-        /* Generate the log message parameters */
-		String savePath = FSMan.getDefaultFilePath();
-		String fileName = this.getCaptureFilename();
-		
-		/* Save captured image to file */
-		FSMan.saveFileData(savePath, fileName, data);
-		
-		/* Update the metadata object */
-		container.setCaptureFile(fileName, savePath);
+		_wqData.pH 				 = matchValue[0];
+		_wqData.dissolved_oxygen = matchValue[1];
+		_wqData.conductivity 	 = matchValue[2];
+		_wqData.temperature 	 = matchValue[3];
+		_wqData.turbidity 		 = matchValue[4];
 		
 		return;
 	}
 	
+	private String getOldWaterQualityData() {
+		IPersistentDataBridge pDataStore = getPersistentDataBridge();
+		if (pDataStore == null) {
+			return "0.0,0.0,0.0,0.0,0.0";
+		}
+
+		String oldWaterQualityData = null;
+		oldWaterQualityData = pDataStore.get("LAST_WQ_DATA");
+		
+		if (oldWaterQualityData == null) {
+			return "0.0,0.0,0.0,0.0,0.0";
+		}
+		
+		OLog.info("Old Water Quality Data: " + oldWaterQualityData);
+		
+		return oldWaterQualityData;
+	}
+	
+	private IPersistentDataBridge getPersistentDataBridge() {
+		IPersistentDataBridge pDataStore 
+			= (IPersistentDataBridge) _mainInfo
+				.getFeature("persistentDataStore");
+		if (pDataStore == null) {
+			return pDataStore;
+		}
+		
+		if ( pDataStore.isReady() == false ) {
+			if (pDataStore.initialize(_mainInfo) != Status.OK) {
+				pDataStore = null;
+			}
+		}
+		
+		return pDataStore;
+	}
 
 	/**********************************************************************/
 	/**  CameraController Triggers                                       **/
 	/**********************************************************************/
+	private CameraControlTask _cameraControlTask = null;
+	
 	@Override
 	public Status triggerCameraInitialize() {
 		/* Start a camera control task to initialize the camera */
@@ -479,37 +493,16 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		
 		return Status.OK;
 	}
-
 	
-
-	/**********************************************************************/
-	/**  Private classes                                                 **/
-	/**********************************************************************/
-	private class SavePictureCallback implements Camera.PictureCallback {
-		private CapturedImageMetaData _saveContainer = null;
-		
-		public SavePictureCallback(CapturedImageMetaData container) {
-			this._saveContainer = container;
-			
-			return;
+	private ICameraBridge getCameraBridge() {
+		ICameraBridge cameraBridge 
+			= (ICameraBridge) _mainInfo
+				.getFeature("camera");
+		if (cameraBridge == null) {
+			return cameraBridge;
 		}
 		
-		@Override
-		public void onPictureTaken(byte[] data, Camera camera) {
-			OLog.info("SavePictureCallback invoked.");
-			savePictureToFile(_saveContainer, data);
-			_camera.stopPreview();
-
-			/* Unblock the thread waiting for the camera capture */
-			if ( (_cameraCaptureThread != null) && (_cameraCaptureThread.isAlive()) ) {
-				_cameraCaptureThread.interrupt();
-			} else {
-				OLog.warn("Camera capture thread does not exist");
-			}
-			
-			return;
-		}
-		
+		return cameraBridge;
 	}
 	
 	/**********************************************************************/
@@ -570,21 +563,28 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		}
 		
 		protected void onPostExecute(Void params) {
+			ICameraBridge cameraBridge = getCameraBridge();
+			if (cameraBridge == null) {
+				OLog.err("CameraBridge unavailable");
+				_cameraControlTask = null;
+				return;
+			}
+			
 			switch (this.type) {
 				case INITIALIZE:
-					cameraInitialize();
+					cameraBridge.initialize(_mainInfo);
 					OLog.info("Camera initialization done");
 					break;
 				case CAPTURE:
 					if (container != null) {
-						cameraCapture(container);	
+						cameraBridge.capture(container);
 					} else {
 						OLog.err("Invalid container for image capture data");
 					}
 					OLog.info("Camera capture done");
 					break;
 				case SHUTDOWN:
-					cameraShutdown();
+					cameraBridge.shutdown();
 					OLog.info("Camera shutdown done");
 					break;
 				default:
@@ -596,61 +596,6 @@ public class OreadService extends Service implements MainControllerEventHandler,
 			
 			return;
 		}
-		
-	}
-	
-	private void reloadOldWaterQualityData() {
-		String oldWaterQualityData = null;
-		
-		oldWaterQualityData = getOldWaterQualityData();
-		if (oldWaterQualityData == null) {
-			return;
-		}
-		
-
-		/* Find each sequence within the string that matches */
-		Pattern dataPattern = Pattern.compile("[-]*[0-9]+\\.*[0-9]*");
-		Matcher dataMatcher = dataPattern.matcher(oldWaterQualityData);
-		int matchCount = 0;
-		double matchValue[] = new double[5];
-		
-		while(dataMatcher.find()) {
-			int startIdx = dataMatcher.start();
-			int endIdx = dataMatcher.end();
-			
-			String matchStr = oldWaterQualityData.substring(startIdx, endIdx);
-			
-			matchValue[matchCount] = Double.parseDouble(matchStr);
-					
-			matchCount++;
-		}
-		
-		_wqData.pH 				 = matchValue[0];
-		_wqData.dissolved_oxygen = matchValue[1];
-		_wqData.conductivity 	 = matchValue[2];
-		_wqData.temperature 	 = matchValue[3];
-		_wqData.turbidity 		 = matchValue[4];
-		
-		return;
-	}
-	
-	private String getOldWaterQualityData() {
-		AndroidStoredDataBridge pDataStore 
-			= AndroidStoredDataBridge.getInstance((Context)this);
-		if (pDataStore == null) {
-			return "0.0,0.0,0.0,0.0,0.0";
-		}
-
-		String oldWaterQualityData = null;
-		oldWaterQualityData = pDataStore.get("LAST_WQ_DATA");
-		
-		if (oldWaterQualityData == null) {
-			return "0.0,0.0,0.0,0.0,0.0";
-		}
-		
-		OLog.info("Old Water Quality Data: " + oldWaterQualityData);
-		
-		return oldWaterQualityData;
 	}
 	
 	/**********************************************************************/
@@ -689,8 +634,6 @@ public class OreadService extends Service implements MainControllerEventHandler,
 				OLog.err("OreadService API Start Failed");
 			}
     		
-    		_state = ServiceState.ACTIVE;
-    		
 			return;
 		}
 
@@ -699,8 +642,11 @@ public class OreadService extends Service implements MainControllerEventHandler,
             if (deactivateService() != Status.OK) {
                 OLog.err("OreadService API Stop Failed");
             }
-    		
-    		_state = ServiceState.STOPPED; 
+            
+            /* Special state which prevents the service from 
+             *  automatically creating a wake up event for
+             *  the service */
+            _state = ServiceState.STOPPED;
     		
     		unscheduleNextWakeUpEvent();
     		
@@ -741,10 +687,6 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	/**********************************************************************/
 	private enum TaskStatus {
 		UNKNOWN, OK, ALREADY_STARTED, FAILED
-	}
-	
-	private enum CameraState {
-		INACTIVE, READY, BUSY 
 	}
 
 	private enum ServiceState { 
