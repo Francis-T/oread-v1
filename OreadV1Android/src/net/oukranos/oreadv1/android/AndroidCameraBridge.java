@@ -1,5 +1,8 @@
 package net.oukranos.oreadv1.android;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import net.oukranos.oreadv1.CameraPreview;
 import net.oukranos.oreadv1.interfaces.CapturedImageMetaData;
 import net.oukranos.oreadv1.interfaces.bridge.ICameraBridge;
@@ -8,6 +11,7 @@ import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.util.OreadTimestamp;
 import android.content.Context;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
 import android.hardware.Camera;
 import android.view.WindowManager;
 
@@ -69,15 +73,16 @@ public class AndroidCameraBridge extends AndroidBridgeImpl implements ICameraBri
 				_cameraParams.setPictureSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
 				_cameraParams.setPreviewSize(DEFAULT_PICTURE_WIDTH, DEFAULT_PICTURE_HEIGHT);
 				_cameraParams.setRotation(90);
-//				_cameraParams.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+				_cameraParams.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
 				
 				/* Define the camera focus areas */
 //				Camera.Area focusArea = new Camera.Area(new Rect(-167,100,167,562), 1000);
-//				Camera.Area focusArea = new Camera.Area(new Rect(-167,100,167,562), 1000);
-//				List<Camera.Area> focusAreas = new ArrayList<Camera.Area>();
-//				focusAreas.add(focusArea);
-//				
-//				_cameraParams.setFocusAreas(focusAreas);
+				Camera.Area focusArea = new Camera.Area(new Rect(-167,250,167,850), 990);
+				List<Camera.Area> focusAreas = new ArrayList<Camera.Area>();
+				focusAreas.add(focusArea);
+				
+				_cameraParams.setFocusAreas(focusAreas);
+				_cameraParams.setMeteringAreas(focusAreas);
 				_camera.setParameters(_cameraParams);
 				
 			} catch (Exception e) {
@@ -107,6 +112,8 @@ public class AndroidCameraBridge extends AndroidBridgeImpl implements ICameraBri
 		} else {
 			OLog.warn("Camera preview is not null!");
 			_camera.startPreview();
+			_camera.cancelAutoFocus();
+			_camera.autoFocus(null);
 		}
 		
 		_state = CameraState.READY;

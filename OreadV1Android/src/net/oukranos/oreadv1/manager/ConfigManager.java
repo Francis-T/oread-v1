@@ -25,6 +25,7 @@ public class ConfigManager {
 	private static final String DEFAULT_CFG_FILE_TEMP_NAME = "oread_config_temp.xml";
 	private static final String DEFAULT_CFG_FULL_FILE_PATH = DEFAULT_CFG_FILE_PATH + "/" + DEFAULT_CFG_FILE_NAME;
 	private static final String DEFAULT_DEVICE_CONFIG_URL_BASE = "http://miningsensors.info/deviceconf";
+	//private static final String DEFAULT_DEVICE_CONFIG_URL_BASE = "http://miningsensors.ateneo.edu/deviceconf";
 	//private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "DV862808028030255";
 	private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "TEST_DEVICE";
 	private static final long 	DEFAULT_CONFIG_FILE_AGE_LIMIT = (8 * 60 * 60 * 1000); // ~8 hours old

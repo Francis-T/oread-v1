@@ -17,7 +17,7 @@ public abstract class Sensor {
 	private byte _dataBuffer[] = new byte[512];
 	private int _dataOffset = 0;
 	private ReceiveStatus _lastReceiveStatus = ReceiveStatus.UNKNOWN;
-	private long _timeout = 2000; // TODO default
+	private long _timeout = 5000; // TODO default
 
 	/* Sensor Response Matrix */
 	protected String R_RESP_PREF  	= "";

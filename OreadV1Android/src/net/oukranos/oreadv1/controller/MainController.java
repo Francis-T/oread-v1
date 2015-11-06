@@ -208,24 +208,6 @@ public class MainController extends AbstractController implements MethodEvaluato
 			
 			controller.performCommand(taskCmdStr, taskParamStr);
 			
-		} else if (shortCmdStr.equals("waitUntilTimeSinceStarted")) {
-			long elapsedTimeSinceStart = System.currentTimeMillis() - _procStart;
-			long sleepTime = Long.valueOf(paramStr) - elapsedTimeSinceStart;
-			if (sleepTime < 0) {
-				sleepTime = 0;
-			}
-			
-			OLog.info("Sleeping for " + sleepTime + " ms...");
-			try {
-				Thread.sleep(sleepTime);
-			} catch (Exception e) {
-				OLog.warn("Something went wrong.");
-				e.printStackTrace();
-			}
-			long stopTime = System.currentTimeMillis();
-			OLog.info("Thread woke up " + (stopTime-elapsedTimeSinceStart) + "ms later." );
-			this.writeInfo("Command Performed: Wait for " + sleepTime + "ms");
-			
 		} else if (shortCmdStr.equals("wait")) {
 			long sleepTime = Long.valueOf(paramStr);
 			long startTime = System.currentTimeMillis();
@@ -304,6 +286,24 @@ public class MainController extends AbstractController implements MethodEvaluato
 			
 			
 			this.writeInfo("Command Performed: Updated last water quality read time");
+		} else if (shortCmdStr.equals("updateWQReadStartTime")) {
+			IPersistentDataBridge pDataStore = getPersistentDataBridge();
+			
+			pDataStore.remove("WQ_READ_START_TIME");
+			String currentTime = Long.toString(System.currentTimeMillis());
+			pDataStore.put("WQ_READ_START_TIME", currentTime);
+			
+			
+			this.writeInfo("Command Performed: Updated water quality read start time");
+		} else if (shortCmdStr.equals("updateCalibStartTime")) {
+			IPersistentDataBridge pDataStore = getPersistentDataBridge();
+			
+			pDataStore.remove("CALIB_START_TIME");
+			String currentTime = Long.toString(System.currentTimeMillis());
+			pDataStore.put("CALIB_START_TIME", currentTime);
+			
+			
+			this.writeInfo("Command Performed: Updated water quality read start time");
 		} else {
 			this.writeErr("Unknown or invalid command: " + shortCmdStr);
 		}
@@ -463,6 +463,27 @@ public class MainController extends AbstractController implements MethodEvaluato
 			
 			return DataStoreObject.createNewInstance("getCurrCalibrationState", 
 					"integer", currCalibState );
+		} else if (methodName.equals("getCurrWQReadState()")) {
+			String result = null;
+			IPersistentDataBridge pDataStore = getPersistentDataBridge();
+			if (pDataStore != null) {
+				result = pDataStore.get("CURR_WQ_READ_STATE");
+			}
+			
+			if (result == null) {
+				result = "0";
+			}
+			
+			int currWQReadState = 0;
+			
+			try {
+				currWQReadState = Integer.parseInt(result);
+			} catch (Exception e) {
+				currWQReadState = 0;
+			}
+			
+			return DataStoreObject.createNewInstance("getCurrWQReadState", 
+					"integer", currWQReadState );
 		} else if (methodName.equals("isAutosamplerActive()")) {
 			String result = null;
 			IPersistentDataBridge pDataStore = getPersistentDataBridge();
@@ -500,6 +521,48 @@ public class MainController extends AbstractController implements MethodEvaluato
 			}
 			
 			return DataStoreObject.createNewInstance("getTimeSinceAutosamplerActivation", 
+					"long", System.currentTimeMillis() - startTime );
+		} else if (methodName.equals("getTimeSinceWQReadStart()")) {
+			String result = null;
+			IPersistentDataBridge pDataStore = getPersistentDataBridge();
+			if (pDataStore != null) {
+				result = pDataStore.get("WQ_READ_START_TIME");
+			}
+			
+			if (result == null) {
+				result = "0";
+			}
+			
+			long startTime = 0l;
+			
+			try {
+				startTime = Long.parseLong(result);
+			} catch (Exception e) {
+				startTime = 0l;
+			}
+			
+			return DataStoreObject.createNewInstance("getTimeSinceWQReadStart", 
+					"long", System.currentTimeMillis() - startTime );
+		} else if (methodName.equals("getTimeSinceCalibStart()")) {
+			String result = null;
+			IPersistentDataBridge pDataStore = getPersistentDataBridge();
+			if (pDataStore != null) {
+				result = pDataStore.get("CALIB_START_TIME");
+			}
+			
+			if (result == null) {
+				result = "0";
+			}
+			
+			long startTime = 0l;
+			
+			try {
+				startTime = Long.parseLong(result);
+			} catch (Exception e) {
+				startTime = 0l;
+			}
+			
+			return DataStoreObject.createNewInstance("getTimeSinceCalibStart", 
 					"long", System.currentTimeMillis() - startTime );
 		} else if (methodName.equals("shouldCaptureImage()")) {
 			String result = null;

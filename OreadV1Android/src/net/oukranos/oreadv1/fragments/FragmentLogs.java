@@ -1,17 +1,14 @@
 package net.oukranos.oreadv1.fragments;
 
 import net.oukranos.oreadv1.R;
-import net.oukranos.oreadv1.MainActivity.OreadFragment;
 import net.oukranos.oreadv1.interfaces.OreadServiceApi;
 import net.oukranos.oreadv1.interfaces.OreadServiceListener;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.OreadServiceControllerStatus;
 import net.oukranos.oreadv1.util.OreadLogger;
 
-import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.Fragment;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.util.Log;
@@ -24,7 +21,6 @@ import android.view.GestureDetector.SimpleOnGestureListener;
 import android.view.View.OnTouchListener;
 import android.widget.TextView;
 
-@TargetApi(Build.VERSION_CODES.HONEYCOMB)
 public class FragmentLogs extends Fragment {
 	/* Get an instance of the OreadLogger class to handle logging */
 	private static final OreadLogger OLog = OreadLogger.getInstance();

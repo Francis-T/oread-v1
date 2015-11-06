@@ -6,9 +6,11 @@ import java.util.Arrays;
 import java.util.List;
 
 import net.oukranos.oreadv1.devices.control.AsHgAutosampler;
+import net.oukranos.oreadv1.devices.control.CleanWaterPump;
 import net.oukranos.oreadv1.devices.control.CuZnAutosampler;
 import net.oukranos.oreadv1.devices.control.DrainValve;
-import net.oukranos.oreadv1.devices.control.PeristalticPump;
+import net.oukranos.oreadv1.devices.control.HighPointCalibSolutionPump;
+import net.oukranos.oreadv1.devices.control.LowPointCalibSolutionPump;
 import net.oukranos.oreadv1.devices.control.SubmersiblePump;
 import net.oukranos.oreadv1.interfaces.AbstractController;
 import net.oukranos.oreadv1.interfaces.IPersistentDataBridge;
@@ -31,7 +33,9 @@ public class AutomationController extends AbstractController implements SensorEv
 	private Class<?> _controlDeviceClasses[] = {
 			DrainValve.class,
 			SubmersiblePump.class,
-			PeristalticPump.class,
+			CleanWaterPump.class,
+			LowPointCalibSolutionPump.class,
+			HighPointCalibSolutionPump.class,
 			AsHgAutosampler.class,
 			CuZnAutosampler.class
 	};
@@ -177,15 +181,39 @@ public class AutomationController extends AbstractController implements SensorEv
 					paramStr
 			);
 			
-		} else if (shortCmdStr.equals("startSolutionDispense") == true) {
+		} else if (shortCmdStr.equals("startCleanWaterDispense") == true) {
 			activateDevice(
-					getDevice("Peristaltic Pump"), 
+					getDevice("Clean Water Pump"), 
 					paramStr
 			);
 			
-		} else if (shortCmdStr.equals("stopSolutionDispense") == true) {
+		} else if (shortCmdStr.equals("stopCleanWaterDispense") == true) {
 			deactivateDevice(
-					getDevice("Peristaltic Pump"), 
+					getDevice("Clean Water Pump"), 
+					paramStr
+			);
+			
+		} else if (shortCmdStr.equals("startHighPointSolutionDispense") == true) {
+			activateDevice(
+					getDevice("High-Point Calib Solution Pump"), 
+					paramStr
+			);
+			
+		} else if (shortCmdStr.equals("stopHighPointSolutionDispense") == true) {
+			deactivateDevice(
+					getDevice("High-Point Calib Solution Pump"), 
+					paramStr
+			);
+			
+		} else if (shortCmdStr.equals("startLowPointSolutionDispense") == true) {
+			activateDevice(
+					getDevice("Low-Point Calib Solution Pump"), 
+					paramStr
+			);
+			
+		} else if (shortCmdStr.equals("stopLowPointSolutionDispense") == true) {
+			deactivateDevice(
+					getDevice("Low-Point Calib Solution Pump"), 
 					paramStr
 			);
 			

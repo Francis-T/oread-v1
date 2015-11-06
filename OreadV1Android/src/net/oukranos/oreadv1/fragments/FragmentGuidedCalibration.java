@@ -22,7 +22,6 @@ import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 
-@TargetApi(Build.VERSION_CODES.HONEYCOMB)
 public class FragmentGuidedCalibration extends Fragment implements OnItemClickListener {
 	/* Get an instance of the OreadLogger class to handle logging */
 	private static final OreadLogger OLog = OreadLogger.getInstance();

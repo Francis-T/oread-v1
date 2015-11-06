@@ -3,12 +3,12 @@ package net.oukranos.oreadv1.devices.control;
 import net.oukranos.oreadv1.types.ControlMechanism;
 import net.oukranos.oreadv1.types.Status;
 
-public class PeristalticPump extends ControlMechanism {
+public class LowPointCalibSolutionPump extends ControlMechanism {
 	private static final String ACTV_CMD_STR = "ACTV P1";
 	private static final String DEACT_CMD_STR = "DEACT P1";
 
-	public PeristalticPump() {
-		setName("Peristaltic Pump");
+	public LowPointCalibSolutionPump() {
+		setName("Low-Point Calib Solution Pump");
 		setBlocking(true);
 		setTimeoutDuration(10000);
 		return;

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <configuration id="oread-config"
-               version="1.4"
-               creation-date="9430780188000">
+               version="1.5"
+               creation-date="9430780188001">
     <module-list>
         <module id="main" type="system"/>
         <module id="bluetooth" type="comm"/>
@@ -17,114 +17,198 @@
     <!-- 
          Run Condition List
          - The following conditions are tested in sequence to determine whether to 
-            execute them or not. The order, therefore matters. In the future, it
-            might be best to include a sequence id property to each condition 
+            execute them or not. The order, therefore matters. 
     -->
     <condition-list>
-        <condition id="upload_data_cond" procedure="uploadWaterQuality" description="test">
-            isWaterQualityDataAvailable() == "true";
-        </condition>
-
-        <condition id="upload_image_cond" procedure="uploadImageCapture" description="test">
-            isImageCaptureAvailable() == "true";
-        </condition>
-        
-        <!--condition id="clear_db_cond" procedure="clearDatabase" description="test">
+        <!--condition id="cond_diag"
+                   procedure="diagnostics"
+                   description="Diagnostic test for control mechanisms">
             getCurrentHour() != 24;
         </condition-->
-
-        <!--
-        <condition id="calibrate_sensors1" procedure="calibrateSensorsPhase1" description="test">
+        
+        <!--condition id="clear_db_cond" 
+                   procedure="clearDatabase" 
+                   description="Clears the database. This is for test purposes only.">
             getCurrentHour() != 24;
-            getTimeSinceLastCalibration() > 3600000l;
+        </condition-->
+		
+        <condition id="calibrate_sensors1" 
+                   procedure="calibrateSensorsPhase1" 
+                   description="Performs dry calibration steps for the sensors.">
+            getCurrentHour() != 24;
+            getTimeSinceLastCalibration() > 43200000l;
             getCurrCalibrationState() == 0;
         </condition>
 
-        <condition id="calibrate_sensors2" procedure="calibrateSensorsPhase2" description="test">
+        <condition id="calibrate_sensors2" 
+                   procedure="calibrateSensorsPhase2" 
+                   description="Performs low-point calibration steps for the sensors">
             getCurrentHour() != 24;
-            getTimeSinceLastCalibration() > 3600000l;
+            getTimeSinceLastCalibration() > 43200000l;
             getCurrCalibrationState() == 1;
         </condition>
 
-        <condition id="calibrate_sensors3" procedure="calibrateSensorsPhase3" description="test">
+        <condition id="calibrate_sensors3" 
+                   procedure="calibrateSensorsPhase3" 
+                   description="Performs high-point calibration steps for the sensors">
             getCurrentHour() != 24;
-            getTimeSinceLastCalibration() > 3600000l;
+            getTimeSinceLastCalibration() > 43200000l;
             getCurrCalibrationState() == 2;
         </condition>
-        -->
 
         <!-- 
-             Condition: cond_ashg_poll
-             Description: Polls the Autosampler for its state.
+              Always attempt to poll the state of the autosampler during each
+               cycle. This ensures that we always know the 'readiness' state 
+               of the autosampler. The response to the poll command (which is 
+               the autosampler state) is saved in the "CURR_ASHG_STATE" 
+               persistent variable.
 
-                          Always attempt to poll the state of the autosampler during each
-                           cycle. This ensures that we always know the 'readiness' state 
-                           of the autosampler. The response to the poll command (which is 
-                           the autosampler state) is saved in the "CURR_ASHG_STATE" 
-                           persistent variable.
+                4x32000000l
          -->
-        <condition id="cond_ashg_poll" procedure="pollAutosampler" description="test">
+        <!--condition id="cond_ashg_poll" 
+                   procedure="pollAutosampler" 
+                   description="Polls the Autosampler for its state.">
             getCurrentHour() != 24;
-        </condition>
+            43200000l > getTimeSinceLastCalibration();
+            getCurrCalibrationState() == 0;
+            getCurrWQReadState() == 0;
+        </condition-->
 
-        <!-- 
-             Condition: cond_ashg_start 
-             Description: Starts the Autosampler sequence
-         -->
-        <condition id="cond_ashg_start" procedure="startAutosampler" description="test">
+        <condition id="cond_ashg_start" 
+                   procedure="startAutosampler" 
+                   description="Starts the Autosampler sequence.">
             getCurrentHour() != 24;
+            43200000l > getTimeSinceLastCalibration();
+            getCurrCalibrationState() == 0;
             getAutosamplerState() == 0;
+            getTimeSinceLastLfsbCapture() > 300000l;
+            getCurrWQReadState() == 0;
         </condition>
 
-        <!-- 
-             Condition: cond_ashg_restart 
-             Description: Same as cond_ashg_start; 
-                          Starts the Autosampler sequence again after the initial run.
-         -->
-        <condition id="cond_ashg_restart" procedure="startAutosampler" description="test">
+        <condition id="cond_ashg_restart" 
+                   procedure="startAutosampler" 
+                   description="Starts the Autosampler sequence again after the initial run.">
             getCurrentHour() != 24;
+            43200000l > getTimeSinceLastCalibration();
+            getCurrCalibrationState() == 0;
             getAutosamplerState() == 5;
+            getTimeSinceLastLfsbCapture() > 300000l;
+            getCurrWQReadState() == 0;
         </condition>
 
-        <!-- 
-             Condition: cond_ashg_capture 
-             Description: Instructs the mobile phone to take a picture of the LFSB
-                           since the Autosampler sequence has reached a state where
-                           said picture could now be taken
-         -->
-        <condition id="cond_ashg_capture" procedure="captureImage" description="test">
+        <condition id="cond_ashg_capture" 
+                   procedure="captureImage" 
+                   description="Instructs the mobile phone to take a picture of the LFSB.">
             getCurrentHour() != 24;
+            43200000l > getTimeSinceLastCalibration();
+            getCurrCalibrationState() == 0;
             isAutosamplerActive() == "true";
             getAutosamplerState() == 3;
             shouldCaptureImage() == "true";
         </condition>
 
-        <!-- 
-             Condition: cond_ashg_cleanup 
-             Description: Initiates autosampler cleanup once the a picture of the LFSB
-                           has been taken.
-         -->
-        <condition id="cond_ashg_cleanup" procedure="stopAutosampler" description="test">
+        <condition id="cond_ashg_cleanup" 
+                   procedure="stopAutosampler" 
+                   description="Initiates autosampler cleanup after the LFSB picture has been taken.">
             getCurrentHour() != 24;
+            43200000l > getTimeSinceLastCalibration();
+            getCurrCalibrationState() == 0;
             isAutosamplerActive() == "true";
             getAutosamplerState() == 3;
             shouldCaptureImage() == "false";
+            getCurrWQReadState() == 0;
         </condition>
 
-        <!-- 
-             Condition: cond_capture_wqdata
-             Description: Capture new water quality data if none are available
-        -->
-        <condition id="cond_capture_wqdata" procedure="captureData" description="test">
+        <condition id="cond_capture_wqdata_start" 
+                   procedure="captureDataStart" 
+                   description="Prepare for water quality data capture">
             getCurrentHour() != 24;
+            43200000l > getTimeSinceLastCalibration();
+            getCurrCalibrationState() == 0;
             isWaterQualityDataAvailable() == "false";
             getAutosamplerState() == 3;
+            getTimeSinceLastWQRead() > 300000l;
+            getCurrWQReadState() == 0;
+        </condition>
+
+        <condition id="cond_capture_wqdata_read" 
+                   procedure="captureDataRead" 
+                   description="Finish capturing water quality data">
+            getCurrentHour() != 24;
+            43200000l > getTimeSinceLastCalibration();
+            getCurrCalibrationState() == 0;
+            isWaterQualityDataAvailable() == "false";
+            getAutosamplerState() == 3;
+            getTimeSinceLastWQRead() > 300000l;
+            getCurrWQReadState() == 1;
+            getTimeSinceWQReadStart() > 300000l;
+        </condition>
+
+        <condition id="upload_image_cond" 
+                   procedure="uploadImageCapture" 
+                   description="Uploads the captured LFSB image to the remote server">
+            isImageCaptureAvailable() == "true";
+        </condition>
+
+        <condition id="upload_data_cond" 
+                   procedure="uploadWaterQuality" 
+                   description="Uploads the captured water quality data to the remote server">
+            isWaterQualityDataAvailable() == "true";
         </condition>
 
     </condition-list>
     
     
     <procedure-list>
+        <procedure id="diagnostics">
+            <task id="comm.bluetooth.start" params=""/>
+            <task id="comm.bluetooth.connectByName" params="HC-05"/>
+            <task id="device.fd_control.start" params=""/>
+
+            <!-- Pump in clean water -->
+            <task id="device.fd_control.startCleanWaterDispense" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopCleanWaterDispense" params=""/>
+
+            <!-- Drain the reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+
+            <!-- Pump in low-point solution -->
+            <task id="device.fd_control.startHighPointSolutionDispense" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopHighPointSolutionDispense" params=""/>
+
+            <!-- Drain the reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+
+            <!-- Pump in high-point solution -->
+            <task id="device.fd_control.startLowPointSolutionDispense" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopLowPointSolutionDispense" params=""/>
+
+            <!-- Drain the reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+
+            <!-- Pump in river water -->
+            <task id="device.fd_control.startPump" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopPump" params=""/>
+
+            <!-- Drain the reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+
+            <task id="device.fd_control.stop" params=""/>
+            <task id="comm.bluetooth.stop" params=""/>
+        </procedure>
+
         <!--                                                                -->
         <!-- Automated Calibration                                          -->
         <!--                                                                -->
@@ -134,9 +218,6 @@
             <task id="comm.bluetooth.connectByName" params="HC-05"/>
             <task id="sensors.water_quality.start" params=""/>
             <task id="device.fd_control.start" params=""/>
-            <task id="device.fd_control.startPump" params=""/>
-            <task id="system.main.wait" params="10000"/>
-            <task id="device.fd_control.stopPump" params=""/>
             
             <!-- Clear Calibration -->
             <task id="sensors.water_quality.calibratePH" params="clear"/>
@@ -158,6 +239,23 @@
             <task id="system.main.wait" params="1500"/>
             <task id="sensors.water_quality.calibrateEC" params="?"/>
 
+            <!-- Pump in clean water -->
+            <!--
+            <task id="device.fd_control.startCleanWaterDispense" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopCleanWaterDispense" params=""/>
+            -->
+            <task id="device.fd_control.startPump" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopPump" params=""/>
+
+            <!-- Drain the water from the reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+
+            <task id="system.main.wait" params="300000"/>
+
             <!-- Air Calibrate the Dissolved Oxygen Sensor -->
             <task id="system.main.wait" params="1500"/>
             <task id="sensors.water_quality.calibrateDO" params=""/>
@@ -176,8 +274,16 @@
             <task id="comm.bluetooth.start" params=""/>
             <task id="comm.bluetooth.connectByName" params="HC-05"/>
             <task id="sensors.water_quality.start" params=""/>
+            <task id="device.fd_control.start" params=""/>
+
+            <!-- Pump in low-point calib solution -->
+            <task id="device.fd_control.startLowPointSolutionDispense" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopLowPointSolutionDispense" params=""/>
             
             <!-- Perform Calibration Phase II -->
+            <task id="system.main.wait" params="300000"/>
+
             <!--  This calibrates to our low-point solution (D) -->
             <task id="sensors.water_quality.calibratePH" params="mid,7.01"/>
             <task id="system.main.wait" params="1500"/>
@@ -193,7 +299,13 @@
             <task id="sensors.water_quality.calibrateEC" params="?"/>
 
             <task id="system.main.savePersistentData" params="CURR_CALIB_STATE,2"/>
+
+            <!-- Drain the calib solution from the reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
             
+            <task id="device.fd_control.stop" params=""/>
             <task id="sensors.water_quality.stop" params=""/>
             <task id="comm.bluetooth.stop" params=""/>
         </procedure>
@@ -203,8 +315,16 @@
             <task id="comm.bluetooth.start" params=""/>
             <task id="comm.bluetooth.connectByName" params="HC-05"/>
             <task id="sensors.water_quality.start" params=""/>
+            <task id="device.fd_control.start" params=""/>
             
-            <!-- Perform Calibration Phase II -->
+            <!-- Pump in high-point calib solution -->
+            <task id="device.fd_control.startHighPointSolutionDispense" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopHighPointSolutionDispense" params=""/>
+
+            <!-- Perform Calibration Phase III -->
+            <task id="system.main.wait" params="300000"/>
+
             <!--  This calibrates to our high-point solution (B-2) -->
             <task id="sensors.water_quality.calibratePH" params="high,9.95"/>
             <task id="system.main.wait" params="1500"/>
@@ -219,7 +339,13 @@
 
             <task id="system.main.updateLastCalibTime" params=""/>
             <task id="system.main.savePersistentData" params="CURR_CALIB_STATE,0"/>
+
+            <!-- Drain the calib solution from the reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
             
+            <task id="device.fd_control.stop" params=""/>
             <task id="sensors.water_quality.stop" params=""/>
             <task id="comm.bluetooth.stop" params=""/>
         </procedure>
@@ -231,9 +357,24 @@
             <task id="comm.bluetooth.start" params=""/>
             <task id="comm.bluetooth.connectByName" params="HC-05"/>
             <task id="device.fd_control.start" params=""/>
+
+            <!-- Prepare the reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+
             <task id="device.fd_control.startPump" params=""/>
             <task id="system.main.wait" params="20000"/>
             <task id="device.fd_control.stopPump" params=""/>
+
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+
+            <task id="device.fd_control.startPump" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopPump" params=""/>
+
             <!-- Start As-Hg autosampler -->
             <task id="device.fd_control.startAutosampler" params="@"/>
             <task id="system.main.wait" params="2500"/>
@@ -284,6 +425,7 @@
             <task id="storage.db.start" params=""/>
             <task id="storage.db.storeAsHgCaptureData" params="hg_as_detection_data"/>
 
+            <task id="system.main.updateLastLfsbCaptureTime" params=""/>
             <task id="system.main.savePersistentData" params="ASHG_READY_TO_CAPTURE,false"/>
             
             <task id="storage.db.stop" params=""/>
@@ -295,7 +437,7 @@
             <task id="comm.network.start" params=""/>
             <task id="storage.db.start" params=""/>
             <task id="data.upload.start" params=""/>
-            <!-- TODO RE-ENABLE THIS LATER -->
+
             <task id="data.upload.processCachedImage" params=""/>
             <task id="system.main.wait" params="5000"/>
             
@@ -314,7 +456,7 @@
         <!--                                                                -->
         <!-- Water Quality Data                                             -->
         <!--                                                                -->
-        <procedure id="captureData">
+        <procedure id="captureDataStart">
             <!-- Initialise required modules -->
             <task id="comm.network.start" params=""/>
             <task id="comm.bluetooth.start" params=""/>
@@ -324,27 +466,59 @@
             <task id="system.main.wait" params="5000"/>
             <task id="comm.bluetooth.connectByName" params="HC-05"/>
             <task id="device.fd_control.start" params=""/>
+
+            <!-- Prepare the reservoir -->
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+
+            <task id="device.fd_control.startPump" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.stopPump" params=""/>
+
+            <task id="device.fd_control.openValve" params=""/>
+            <task id="system.main.wait" params="20000"/>
+            <task id="device.fd_control.closeValve" params=""/>
+
             <task id="device.fd_control.startPump" params=""/>
             <task id="system.main.wait" params="20000"/>
             <task id="device.fd_control.stopPump" params=""/>
             
-            <!-- Wait for parameters to settle -->
-            <task id="system.main.wait" params="300000"/>
+            <task id="system.main.updateWQReadStartTime" params=""/>
+            <task id="system.main.savePersistentData" params="CURR_WQ_READ_STATE,1"/>
+
+            <task id="device.fd_control.stop" params=""/>
+            <task id="data.process.stop" params=""/>
+            <task id="storage.db.stop" params=""/>
+            <task id="sensors.water_quality.stop" params=""/>
+            <task id="comm.bluetooth.stop" params=""/>
+            <task id="comm.network.stop" params=""/>
+        </procedure>
+        <procedure id="captureDataRead">
+            <!-- Initialise required modules -->
+            <task id="comm.network.start" params=""/>
+            <task id="comm.bluetooth.start" params=""/>
+            <task id="sensors.water_quality.start" params=""/>
+            <task id="storage.db.start" params=""/>
+            <task id="data.process.start" params=""/>
+            <task id="system.main.wait" params="5000"/>
+            <task id="comm.bluetooth.connectByName" params="HC-05"/>
+            <task id="device.fd_control.start" params=""/>
             <task id="data.process.clearWaterQuality" params=""/>
             
             <!-- Take measurements -->
             <task id="sensors.water_quality.readPH" params=""/>
-            <task id="system.main.wait" params="800"/>
+            <task id="system.main.wait" params="1800"/>
             <task id="sensors.water_quality.readDO" params=""/>
-            <task id="system.main.wait" params="800"/>
+            <task id="system.main.wait" params="1800"/>
             <task id="sensors.water_quality.readEC" params=""/>
-            <task id="system.main.wait" params="800"/>
-            <task id="sensors.water_quality.readTM" params=""/>
-            <task id="system.main.wait" params="200"/>
+            <task id="system.main.wait" params="1800"/>
             <task id="sensors.water_quality.readTM" params=""/>
             <task id="system.main.wait" params="800"/>
+            <task id="sensors.water_quality.readTM" params=""/>
+            <task id="system.main.wait" params="1800"/>
             <task id="sensors.water_quality.readTU" params=""/>
-            <task id="system.main.wait" params="800"/>
+            <task id="system.main.wait" params="1800"/>
             
             <!-- Process and display the data -->
             <task id="data.process.waterQuality" params=""/>
@@ -352,6 +526,9 @@
             
             <!-- Store the water quality data -->
             <task id="storage.db.storeWaterQualityData" params="h2o_quality_data"/>
+
+            <task id="system.main.updateLastWQReadTime" params=""/>
+            <task id="system.main.savePersistentData" params="CURR_WQ_READ_STATE,0"/>
             
             <task id="device.fd_control.openValve" params=""/>
             <task id="system.main.wait" params="20000"/>
@@ -392,14 +569,15 @@
             <task id="storage.db.stop" params=""/>
         </procedure>
     </procedure-list>
+
     <data-list>
-        <!--
         <data id="live_data_url" type="string" value="http://miningsensors.info/api"/>
         <data id="live_image_url" type="string" value="http://miningsensors.info/photoupload"/>
-        -->
-        <data id="live_data_url" type="string" value="http://miningsensors.info/api"/>
-        <data id="live_image_url" type="string" value="http://miningsensors.info/photoupload"/>
-        <data id="custom_sleep_interval" type="long" value="181000"/>
+        <data id="custom_sleep_interval" type="long" value="91000"/>
+        <data id="max_calibration_interval" type="long" value="43200000l"/>
+        <data id="max_wq_read_interval" type="long" value="300000l"/>
+        <data id="max_lfsb_capture_interval" type="long" value="300000l"/>
     </data-list>
+
 </configuration>
 

@@ -303,7 +303,7 @@ public class DataUploadController extends AbstractController {
 
 		/* Write the report data */
 		siteImage.setCaptureFile(fileMetaData[0], fileMetaData[1]);
-		siteImage.addReportData(new SiteDeviceReportData("Arsenic", "Water", 0f, ""));
+		siteImage.addReportData(new SiteDeviceReportData("Mercury", "Water", 0f, ""));
 
 		/*
 		 * Do something with the accumulated image data (e.g. send to the

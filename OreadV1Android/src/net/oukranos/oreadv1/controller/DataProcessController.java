@@ -185,7 +185,7 @@ public class DataProcessController extends AbstractController {
 		}
 		
 		siteImage.setCaptureFile(d.getCaptureFileName(), d.getCaptureFilePath());
-		siteImage.addReportData(new SiteDeviceReportData("Arsenic", "Water", 0f, ""));
+		siteImage.addReportData(new SiteDeviceReportData("Mercury", "Water", 0f, ""));
 		
 		DSUtils.updateStoredObject(_mainInfo.getDataStore(), "site_device_image", 
 				siteImage);

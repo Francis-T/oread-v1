@@ -13,16 +13,12 @@ import java.util.TimeZone;
 import net.oukranos.oreadv1.R;
 import net.oukranos.oreadv1.interfaces.OreadServiceApi;
 import net.oukranos.oreadv1.interfaces.OreadServiceListener;
-import net.oukranos.oreadv1.types.ControllerState;
-import net.oukranos.oreadv1.types.OreadServiceControllerStatus;
 import net.oukranos.oreadv1.types.WaterQualityData;
 import net.oukranos.oreadv1.util.OreadLogger;
 
-import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.Fragment;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.RemoteException;
@@ -37,7 +33,6 @@ import android.view.View.OnTouchListener;
 import android.widget.Button;
 import android.widget.TextView;
 
-@TargetApi(Build.VERSION_CODES.HONEYCOMB)
 public class FragmentReadings extends Fragment {
 	/* Get an instance of the OreadLogger class to handle logging */
 	private static final OreadLogger OLog = OreadLogger.getInstance();
