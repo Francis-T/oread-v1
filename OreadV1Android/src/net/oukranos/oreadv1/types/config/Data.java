@@ -3,18 +3,15 @@ package net.oukranos.oreadv1.types.config;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.oukranos.oreadv1.types.GenericData;
 import net.oukranos.oreadv1.types.Status;
 
-public class Data {
-	private String _id = "";
-	private String _type = "";
-	private String _value = "";
+
+public class Data extends GenericData {
 	private List<Data> _compoundDataList = null;
 	
 	public Data(String id, String type, String value) {
-		this._id = id;
-		this._type = type;
-		this._value = value;
+		super(id, type, value);
 		
 		if (this._type.equals("compound") == true) {
 			_compoundDataList = new ArrayList<Data>();
@@ -23,33 +20,13 @@ public class Data {
 		return;
 	}
 	
-	public String getId() {
-		return (this._id);
-	}
-	
-	public String getType() {
-		return (this._type);
-	}
-	
+	@Override
 	public String getValue() {
-		return (this._value);
-	}
-	
-	public Status setId(String id) {
-		if (id == null) {
-			return Status.FAILED;
-		}
-		
-		if (id.isEmpty() == true) {
-			return Status.FAILED;
-		}
-		
-		this._id = id;
-		
-		return Status.OK;
+		return (super.getValue().toString());
 	}
 
-	public Status setType(String type ) {
+	@Override
+	public Status setType(String type) {
 		if (type == null) {
 			return Status.FAILED;
 		}
@@ -72,17 +49,7 @@ public class Data {
 			this._compoundDataList = new ArrayList<Data>();
 		}
 		
-		this._type = type;
-		
-		return Status.OK;
-	}
-
-	public Status setValue(String value) {
-		if (value == null) {
-			return Status.FAILED;
-		}
-		
-		this._value = value;
+		super.setType(type);
 		
 		return Status.OK;
 	}

@@ -33,6 +33,37 @@ public class SiteDeviceData implements JsonEncodableData, HttpEncodableData {
 		return;
 	}
 	
+	public void copy(SiteDeviceData data) {
+		_siteDeviceId = data.getId();
+		_context = data.getContext();
+		
+		for (SiteDeviceReportData reportData : _reportDataList) {
+			data.addReportData(reportData);
+		}
+
+		for (SiteDeviceErrorData errorData : _errorDataList) {
+			data.addErrorData(errorData);
+		}
+		
+		return;
+	}
+	
+	public String getId() {
+		return _siteDeviceId;
+	}
+	
+	public String getContext() {
+		return _context;
+	}
+	
+	public List<SiteDeviceReportData> getReportDataList() {
+		return _reportDataList;
+	}
+	
+	public List<SiteDeviceErrorData> getErrorDataList() {
+		return _errorDataList;
+	}
+	
 	public void addReportData(SiteDeviceReportData data) {
 		if (data == null) {
 			return;

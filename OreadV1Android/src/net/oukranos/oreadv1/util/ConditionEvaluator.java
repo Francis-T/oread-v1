@@ -63,8 +63,8 @@ public class ConditionEvaluator {
 			String condExprStr = condStrShort.substring(startIdx, endIdx);
 			
 			Expression expr = new Expression();
-			this.extractTokens(expr, condExprStr);
-			this.extractOperator(expr, condExprStr);
+			extractTokens(expr, condExprStr);
+			extractOperator(expr, condExprStr);
 			
 			OLog.dbg("Evaluating: " + condExprStr);
 			result = expr.evaluate();
@@ -206,12 +206,12 @@ public class ConditionEvaluator {
 		}
 
 		public void setFirstToken(Token t) {
-			this.token1 = t;
+			token1 = t;
 			return;
 		}
 
 		public void setSecondToken(Token t) {
-			this.token2 = t;
+			token2 = t;
 			return;
 		}
 		
@@ -420,60 +420,60 @@ public class ConditionEvaluator {
 		public Object value = null;
 		
 		public String toString() {
-			return (this.id + "(" + this.type + "): " + this.value);
+			return (id + "(" + type + "): " + value);
 		}
 		
 		private Token build(String tokenStr) {
-			this.id = tokenStr;
+			id = tokenStr;
 			/* Check if the token has an equivalent in the data store */
-			if (this.id.charAt(0) == '$') {
+			if (id.charAt(0) == '$') {
 				OLog.dbg("Found data store object");
-				String dataStoreId = this.id.substring(1);
+				String dataStoreId = id.substring(1);
 				if (_dataStore != null) {
 					DataStoreObject d = _dataStore.retrieve(dataStoreId);
 					if (d != null) {
-						this.type = d.getType();
-						this.value = d.getObject();
+						Object dsObj 
+							= parseObjectFromString((String) d.getObject(),
+									d.getType());
+						setContent(dsObj, d.getType());
 					}
 				} else {	
-					this.type = "string";	//TODO
-					this.value = "spoopy";	//TODO
+					type = "string";	//TODO
+					value = "spoopy";	//TODO
 				}
-			} else if (this.id.matches(REGEX_FUNCTION_STR)) {
+			} else if (id.matches(REGEX_FUNCTION_STR)) {
 				OLog.dbg("Found function object");
 				
 				if (_methodEval != null) {
-					DataStoreObject d = _methodEval.evaluate(this.id);
+					DataStoreObject d = _methodEval.evaluate(id);
 					if (d != null) {
-						this.type = d.getType();
-						this.value = d.getObject();
+						type = d.getType();
+						value = d.getObject();
 					}
 				} else {	
-					this.type = "string";	//TODO
-					this.value = "spoopy";	//TODO
+					type = "string";	//TODO
+					value = "spoopy";	//TODO
 				}
-			} else if (this.id.matches(REGEX_STRING_STR)) {
+			} else if (id.matches(REGEX_STRING_STR)) {
 				OLog.dbg("Found possible string");
 				int startIdx = 1;
-				int endIdx = this.id.length() - 1;
-				String strValue = this.id.substring(startIdx, endIdx);
-				
-				this.type = "string";
-				this.value = strValue;
-			} else if(this.id.matches(REGEX_INTEGER_STR)) {
+				int endIdx = id.length() - 1;
+				String strValue = id.substring(startIdx, endIdx);
+
+				setContent(strValue, "string");
+			} else if(id.matches(REGEX_INTEGER_STR)) {
 				OLog.dbg("Found possible integer");
 				Integer intValue = null;
 				try {
-					intValue = Integer.parseInt(this.id);
+					intValue = Integer.parseInt(id);
 				} catch(NumberFormatException e) {
 					intValue = null;
 				}
 
-				this.type = "integer";
-				this.value = intValue;
-			} else if(this.id.matches(REGEX_LONG_STR)) {
+				setContent(intValue, "integer");
+			} else if(id.matches(REGEX_LONG_STR)) {
 				OLog.dbg("Found possible long");
-				String longStr = this.id.replace("l", "");
+				String longStr = id.replace("l", "");
 				Long longValue = null;
 				
 				try {
@@ -481,11 +481,11 @@ public class ConditionEvaluator {
 				} catch(NumberFormatException e) {
 					longValue = null;
 				}
-				this.type = "long";
-				this.value = longValue;
-			} else if(this.id.matches(REGEX_FLOAT_STR)) {
+				
+				setContent(longValue, "long");
+			} else if(id.matches(REGEX_FLOAT_STR)) {
 				OLog.dbg("Found possible float");
-				String floatStr = this.id.replace("f", "");
+				String floatStr = id.replace("f", "");
 				Float floatValue = null;
 				try {
 					floatValue = Float.parseFloat(floatStr);
@@ -493,39 +493,66 @@ public class ConditionEvaluator {
 					floatValue = null;
 				}
 
-				this.type = "float";
-				this.value = floatValue;
-			} else if(this.id.matches(REGEX_DOUBLE_STR)) {
+				setContent(floatValue, "float");
+			} else if(id.matches(REGEX_DOUBLE_STR)) {
 				OLog.dbg("Found possible double");
 				Double doubleValue = null;
 				
 				try {
-					doubleValue = Double.parseDouble(this.id);
+					doubleValue = Double.parseDouble(id);
 				} catch(NumberFormatException e) {
 					doubleValue = null;
 				}
-				this.type = "double";
-				this.value = doubleValue;
+				
+				setContent(doubleValue, "double");
 			}
 			
 			return this;
 		}
+		
+		private void setContent(Object object, String objType) {
+			/* Set token content type */
+			type = objType;
+			
+			/* Set token content value */
+			if (type.equalsIgnoreCase("integer")) {
+				value = (Integer) object;
+			} else if (type.equalsIgnoreCase("long")) {
+				value = (Long) object;
+			} else if (type.equalsIgnoreCase("float")) {
+				value = (Float) object;
+			} else if (type.equalsIgnoreCase("double")) {
+				value = (Double) object;
+			} else if (type.equalsIgnoreCase("string")) {
+				value = (String) object;
+			} else {
+				OLog.warn("Could not cast object of type: " + 
+						object.getClass().getSimpleName());
+				value = object;
+			}
+			
+			return;
+		}
+		
+		private Object parseObjectFromString(String objStr, String type) {
+			Object value = null;
+			
+			/* Set token content value */
+			if (type.equalsIgnoreCase("integer")) {
+				value = Integer.parseInt(objStr);
+			} else if (type.equalsIgnoreCase("long")) {
+				String cleanObjStr = objStr.replace("l", "");
+				value = Long.parseLong(cleanObjStr);
+			} else if (type.equalsIgnoreCase("float")) {
+				String cleanObjStr = objStr.replace("f", "");
+				value = Float.parseFloat(cleanObjStr);
+			} else if (type.equalsIgnoreCase("double")) {
+				value = Double.parseDouble(objStr);
+			} else {
+				value = objStr;
+			}
+			
+			return value;
+		}
 	}
-	
-	/**
-	 * @param args
-	 */
-//	public static void main(String[] args) {
-//		
-//		DataStore ds = new DataStore();
-//		ds.add("currentVersion", "string", "spoopy");
-//		ds.add("timeSinceLastReading", "long", 1242134555l);
-//		
-//		ConditionEvaluator condEval = new ConditionEvaluator();
-//		condEval.setDataStore(ds);
-////		condEval.setMethodEvaluator(new MethodEvaluatorTest()); //TODO 
-//		
-//		condEval.evaluate("$timeSinceLastReading <= 1242134555l; " +
-//				"getCurrentVersion() == \"spoopy\";");
-//	}
 }

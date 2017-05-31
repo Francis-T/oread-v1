@@ -24,9 +24,12 @@ public abstract class ControlMechanism {
 	private ReceiveStatus 		_lastReceiveStatus = ReceiveStatus.UNKNOWN;
 	private BluetoothController 	_btController = null;
 	private IPersistentDataBridge	_pDataStore = null;
+	
+	protected MainControllerInfo		_mainInfo = null;
 
-	public Status initialize() {
+	public Status initialize(MainControllerInfo mainInfo) {
 		this._state = State.READY;
+		this._mainInfo = mainInfo;
 
 		return Status.OK;
 	}

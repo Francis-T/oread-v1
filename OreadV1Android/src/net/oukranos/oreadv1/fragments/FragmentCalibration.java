@@ -493,6 +493,25 @@ public class FragmentCalibration extends Fragment implements OnItemSelectedListe
 			
 			return;
 		}
+
+		@Override
+		public void handleOperationProcStateChanged() throws RemoteException {
+			/* Do Nothing */
+			return;
+		}
+
+		@Override
+		public void handleOperationProcChanged() throws RemoteException {
+			/* Do Nothing */
+			return;
+			
+		}
+
+		@Override
+		public void handleOperationTaskChanged() throws RemoteException {
+			/* Do Nothing */
+			return;
+		}
 	};
 	
 	private class RetrieveDataTask extends AsyncTask<Void, Void, Void> {

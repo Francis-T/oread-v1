@@ -11,6 +11,8 @@ public class WaterQualityData {
 	public double tds = 0.0;
 	public double salinity = 0.0;
 	public double turbidity = 0.0;
+	public double copper = 0.0;
+	public double zinc = 0.0;
 	
 	public WaterQualityData(int id) {
 		this.id = id;
@@ -22,6 +24,9 @@ public class WaterQualityData {
 		this.salinity = 0.0;
 		this.timestamp = 0;
 		this.turbidity = 0.0;
+		
+		this.copper = 0.0;
+		this.zinc = 0.0;
 		
 		return;
 	}
@@ -39,6 +44,10 @@ public class WaterQualityData {
 		this.tds 				= data.tds;
 		this.salinity 			= data.salinity;
 		this.turbidity			= data.turbidity;
+		
+		this.copper				= data.copper;
+		this.zinc				= data.zinc;
+		
 		this.timestamp			= data.getTimestamp();
 		
 		return;
@@ -84,6 +93,12 @@ public class WaterQualityData {
 		sb.append(", ");
 		sb.append("turb = ");
 		sb.append(this.turbidity);
+		sb.append(", ");
+		sb.append("cu = ");
+		sb.append(this.copper);
+		sb.append(", ");
+		sb.append("zn = ");
+		sb.append(this.zinc);
 		return (sb.toString());
 	}
 }

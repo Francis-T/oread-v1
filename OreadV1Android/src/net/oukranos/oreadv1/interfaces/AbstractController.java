@@ -97,6 +97,7 @@ public abstract class AbstractController {
 	protected void setState(ControllerState state) {
 		_stateLock.lock();
 		this._state = state;
+		OLog.dbg(getType() + "." + getName() + " state is now " + _state.toString());
 		_stateLock.unlock();
 	}
 	

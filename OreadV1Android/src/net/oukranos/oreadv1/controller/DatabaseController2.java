@@ -1,38 +1,36 @@
 package net.oukranos.oreadv1.controller;
 
-import android.content.ContentValues;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
+import java.util.HashMap;
 
 import net.oukranos.oreadv1.database.SimpleDbHelper;
 import net.oukranos.oreadv1.database.SimpleDbContract.CachedData;
 import net.oukranos.oreadv1.interfaces.AbstractController;
+import net.oukranos.oreadv1.interfaces.bridge.IBluetoothBridge;
+import net.oukranos.oreadv1.interfaces.bridge.IDatabaseBridge;
 import net.oukranos.oreadv1.types.CachedReportData;
 import net.oukranos.oreadv1.types.ChemicalPresenceData;
 import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.ControllerStatus;
 import net.oukranos.oreadv1.types.DataStore;
 import net.oukranos.oreadv1.types.DataStoreObject;
+import net.oukranos.oreadv1.types.GenericData;
 import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.SiteDeviceReportData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
 
-public class DatabaseController extends AbstractController {
-	private static DatabaseController _databaseController = null;
+public class DatabaseController2 extends AbstractController {
+	private static DatabaseController2 _databaseController = null;
+	
+	private IDatabaseBridge _databaseBridge = null;
 
-	private SimpleDbHelper _dbHelper = null;
-
-	private SQLiteDatabase _activeDb = null;
-	private Cursor _activeCursor = null;
-
-	private DatabaseController(MainControllerInfo mainInfo) {
+	private DatabaseController2() {
 		this.setType("storage");
 		this.setName("db");
 		return;
 	}
 
-	public static DatabaseController getInstance(MainControllerInfo mainInfo) {
+	public static DatabaseController2 getInstance(MainControllerInfo mainInfo) {
 		if (mainInfo == null) {
 			OLog.err("Invalid input parameter/s in " +
 					"DatabaseController.getInstance()");
@@ -40,7 +38,7 @@ public class DatabaseController extends AbstractController {
 		}
 
 		if (_databaseController == null) {
-			_databaseController = new DatabaseController(mainInfo);
+			_databaseController = new DatabaseController2();
 		}
 		
 		_databaseController._mainInfo = mainInfo;
@@ -53,9 +51,9 @@ public class DatabaseController extends AbstractController {
 	/********************/
 	@Override
 	public Status initialize(Object initObject) {
-		/* Instantiate the DB Helper */
-		if (_dbHelper == null) {
-			_dbHelper = new SimpleDbHelper(_mainInfo.getContext());
+		_databaseBridge = getDatabaseBridge();
+		if (_databaseBridge == null) {
+			return Status.FAILED;
 		}
 
 		writeInfo("DatabaseController Initialized");
@@ -129,9 +127,11 @@ public class DatabaseController extends AbstractController {
 		this.setState(ControllerState.UNKNOWN);
 		stopQuery();
 
-		if (_dbHelper != null) {
-			_dbHelper.close();
-			_dbHelper = null;
+		if (_databaseBridge != null) {
+			if (_databaseBridge.isDatabaseOpen()) {
+				_databaseBridge.closeDatabase();
+			}
+			_databaseBridge = null;
 		}
 
 		_databaseController = null;
@@ -141,7 +141,7 @@ public class DatabaseController extends AbstractController {
 	}
 
 	public Status startQuery(String subtype) {
-		if (_activeCursor != null) {
+		if (_databaseBridge.isCursorActive()) {
 			writeErr("Cursor was already initialized");
 			return Status.FAILED;
 		}
@@ -159,25 +159,16 @@ public class DatabaseController extends AbstractController {
 		String filterArgs[] = { "S", subtype };
 
 		/* Open the database if it has not yet been opened */
-		if (_activeDb == null) {
-			if (_dbHelper == null) {
-				writeErr("Database accessor not initialized");
-				return Status.FAILED;
-			}
-
-			_activeDb = _dbHelper.getWritableDatabase();
-			if (_activeDb == null) {
+		if (_databaseBridge.isDatabaseOpen() == false) {
+			if (_databaseBridge.openDatabase() != Status.OK) {
 				writeErr("Failed to access the database");
 				return Status.FAILED;
 			}
 		}
 
 		/* Query the database */
-		_activeCursor = _activeDb.query(CachedData.TABLE_NAME, columns, filter,
-				filterArgs, null, null, sortOrder);
-		_activeCursor.moveToFirst();
-
-		return Status.OK;
+		return _databaseBridge.startQuery(CachedData.TABLE_NAME, columns, 
+				filter, filterArgs, null, null, sortOrder);
 	}
 
 	public Status fetchData(String dataId) {
@@ -221,68 +212,52 @@ public class DatabaseController extends AbstractController {
 	}
 
 	public Status fetchReportData(CachedReportData data) {
-		if (_activeCursor == null) {
+		if (_databaseBridge.isCursorActive() == false) {
 			writeErr("No active cursor for fetching data");
 			return Status.FAILED;
 		}
 
-		if (_activeCursor.isAfterLast() == true) {
-			writeErr("No more rows to fetch");
+		if (_databaseBridge.recordsAvailable() == false) {
+			writeErr("No more data to fetch");
 			return Status.FAILED;
 		}
+		
+		HashMap<String, GenericData> record = _databaseBridge.fetchData();
+		
+		try {
+			int recId = 
+				(Integer) record.get(CachedData.COL_ID).getValue();
+			String recTimestamp = 
+				(String) record.get(CachedData.COL_TIMESTAMP).getValue();
+			String recType = 
+					(String) record.get(CachedData.COL_TYPE).getValue();
+			String recSubtype = 
+					(String) record.get(CachedData.COL_SUBTYPE).getValue();
+			String recStatus = 
+					(String) record.get(CachedData.COL_STATUS).getValue();
+			String recData = 
+					(String) record.get(CachedData.COL_DATA).getValue();
 
-		if (_activeCursor.getCount() <= 0) {
-			writeErr("Active cursor is empty");
+			/* Set the variables for the cached report data */
+			data.setId(recId);
+			data.setTimestamp(recTimestamp);
+			data.setType(recType);
+			data.setSubtype(recSubtype);
+			data.setStatus(recStatus);
+			data.setData(recData);
+			
+		} catch (Exception e) {
+			OLog.err("Failed to get record values");
+			OLog.stackTrace(e);
+			
 			return Status.FAILED;
 		}
-
-		/* Obtain the column indices */
-		int idIdx = _activeCursor.getColumnIndex(CachedData.COL_ID);
-		if (idIdx < 0) {
-			writeErr("Column index not found");
-			return Status.FAILED;
-		}
-
-		int tsIdx = _activeCursor.getColumnIndex(CachedData.COL_TIMESTAMP);
-		if (tsIdx < 0) {
-			writeErr("Column index not found");
-			return Status.FAILED;
-		}
-
-		int typeIdx = _activeCursor.getColumnIndex(CachedData.COL_TYPE);
-		if (typeIdx < 0) {
-			writeErr("Column index not found");
-			return Status.FAILED;
-		}
-
-		int subtypeIdx = _activeCursor.getColumnIndex(CachedData.COL_SUBTYPE);
-		if (subtypeIdx < 0) {
-			writeErr("Column index not found");
-			return Status.FAILED;
-		}
-
-		int statusIdx = _activeCursor.getColumnIndex(CachedData.COL_STATUS);
-		if (statusIdx < 0) {
-			writeErr("Column index not found");
-			return Status.FAILED;
-		}
-
-		int dataIdx = _activeCursor.getColumnIndex(CachedData.COL_DATA);
-		if (dataIdx < 0) {
-			writeErr("Column index not found");
-			return Status.FAILED;
-		}
-
-		/* Set the variables for the cached report data */
-		data.setId(_activeCursor.getInt(idIdx));
-		data.setTimestamp(_activeCursor.getString(tsIdx));
-		data.setType(_activeCursor.getString(typeIdx));
-		data.setSubtype(_activeCursor.getString(subtypeIdx));
-		data.setStatus(_activeCursor.getString(statusIdx));
-		data.setData(_activeCursor.getString(dataIdx));
 
 		/* Move the cursor to the next record */
-		_activeCursor.moveToNext();
+		if (_databaseBridge.nextRecord() != Status.OK) {
+			OLog.err("Failed to move to next record");
+			return Status.FAILED;
+		}
 		
 		writeInfo("Report Data Contents: " + data.toString());
 
@@ -290,12 +265,7 @@ public class DatabaseController extends AbstractController {
 	}
 
 	public Status stopQuery() {
-		if (_activeCursor != null) {
-			_activeCursor.close();
-			_activeCursor = null;
-		}
-
-		if (_activeDb != null) {
+		if (_databaseBridge.finishQuery() != Status.OK) {
 			if (_activeDb.isOpen()) {
 				_activeDb.close();
 			}
@@ -572,6 +542,23 @@ public class DatabaseController extends AbstractController {
 	/*********************/
 	/** Private Methods **/
 	/*********************/
+	private IDatabaseBridge getDatabaseBridge() {
+		IDatabaseBridge databaseBridge 
+			= (IDatabaseBridge) _mainInfo
+				.getFeature("database");
+		if (databaseBridge == null) {
+			return _databaseBridge;
+		}
+		
+		if ( databaseBridge.isReady() == false ) {
+			if (databaseBridge.initialize(_mainInfo) != Status.OK) {
+				databaseBridge = null;
+			}
+		}
+		
+		return databaseBridge;
+	}
+	
 	private Status insertCachedData(SQLiteDatabase db,
 			SiteDeviceReportData data, String type) {
 		return insertCachedData(db, data, type, data.encodeToJsonString());

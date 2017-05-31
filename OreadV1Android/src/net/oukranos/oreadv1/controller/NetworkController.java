@@ -6,6 +6,7 @@ import java.util.Queue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
@@ -42,13 +43,13 @@ public class NetworkController extends AbstractController {
 	private Thread _sendTaskLoopThread = null;
 	private Thread _awaitResponseThread = null;
 	private boolean _sendThreadRunning = false;
+	private HttpUriRequest  _currentHttpRequest = null;
 	private NetworkResponse _lastResponse = null;
 
 	private static NetworkController _networkController = null;
 	private static final HttpClient _httpClient = new DefaultHttpClient();
 
 	private NetworkController(MainControllerInfo mainInfo) {
-
 		/* Set the controller identifiers */
 		this.setType("comm");
 		this.setName("network");
@@ -103,6 +104,7 @@ public class NetworkController extends AbstractController {
 					OLog.err("Unlock failed");
 				}
 			}
+			_queueLock = null;
 		}
 
 		/* Destroy the await response lock */
@@ -114,6 +116,7 @@ public class NetworkController extends AbstractController {
 					OLog.err("Unlock failed");
 				}
 			}
+			_waitThreadLock = null;
 		}
 		
 		/* Destroy the Task Queue */
@@ -374,9 +377,15 @@ public class NetworkController extends AbstractController {
 	}
 
 	private Status destroySendTaskLoop() {
+		_sendThreadRunning = false;
+		
+		/* Check for pending HttpRequests and abort them */
+		if (_currentHttpRequest != null) {
+			_currentHttpRequest.abort();
+		}
+		
 		/* Interrupt and Destroy the Send Thread */
 		if (_sendTaskLoopThread != null) {
-			_sendThreadRunning = false;
 			_sendTaskLoopThread.interrupt();
 
 			try {
@@ -395,7 +404,7 @@ public class NetworkController extends AbstractController {
 		return Status.OK;
 	}
 
-	private Status sendData(SendableData sendableData) {
+	private Status sendData(SendableData sendableData) throws Exception {
 		if (_httpClient == null) {
 			OLog.err("HttpClient is null");
 			return Status.FAILED;
@@ -412,24 +421,44 @@ public class NetworkController extends AbstractController {
 			return Status.FAILED;
 		}
 
-		HttpUriRequest httpRequest = null;
+		/* Create an HttpUriRequest for the provided URL */ 
+		_currentHttpRequest = null;
 		if (sendableData.getMethod().equals("GET")) {
-			httpRequest = new HttpGet(url);
+			_currentHttpRequest = new HttpGet(url);
 		} else {
-			httpRequest = new HttpPost(url);
-			((HttpPost)httpRequest).setEntity(sendableData.getData().encodeDataToHttpEntity());
+			_currentHttpRequest = new HttpPost(url);
+			
+			/* Extract the SendableData contents */
+			HttpEncodableData httpEncData = sendableData.getData();
+			if (httpEncData == null) {
+				OLog.err("Invalid data for sending");
+				return Status.FAILED;
+			}
+			
+			/* Convert it into an HttpEntity */
+			HttpEntity httpEnt = httpEncData.encodeDataToHttpEntity();
+			if (httpEnt == null) {
+				OLog.err("Cannot encode data to be sent");
+				return Status.FAILED;
+			}
+			
+			/* Add the HttpEntity to the current HttpUriRequest */
+			((HttpPost)_currentHttpRequest).setEntity(httpEnt);
 		}
 		
+		/* Execute the HTTP Request to get an HTTP Response */
 		HttpResponse httpResp = null;
 		try {
-			httpResp = _httpClient.execute(httpRequest);
+			httpResp = _httpClient.execute(_currentHttpRequest); /* TODO: Add HttpContext? */
 		} catch (ClientProtocolException e) {
 			OLog.warn("Empty HttpResponse");
-		} catch (IOException e) {
-			OLog.err("HttpPost execution failed");
-			OLog.err("Msg: " + e.getMessage());
-			return Status.FAILED;
+		} catch (Exception e) {
+			OLog.err("Http Request Execution failed due to a fatal exception: "
+						+ e.getMessage());
+			OLog.stackTrace(e);
+			httpResp = null;
 		}
+		
 		if (httpResp == null) {
 			OLog.err("Failed to perform HttpPost");
 			return Status.FAILED;
@@ -457,6 +486,9 @@ public class NetworkController extends AbstractController {
 			OLog.warn("HttpResponse Unexpected: " + statusCode + " - " + statusMsg);
 			return Status.OK;
 		}
+		
+		/* Clear the previously running HttpUriRequest */
+		_currentHttpRequest = null;
 		
 		/* Save the last response's data */
 		try {
@@ -505,10 +537,21 @@ public class NetworkController extends AbstractController {
 
 		@Override
 		public void run() {
-//			OLog.info("Network Controller run task started");
-			while (getState() == ControllerState.READY
-					&& _sendThreadRunning == true) {
-//				OLog.info("Network Controller run task loop start");
+			OLog.info("Network Controller run task started");
+			
+			try {
+				performCyclicTask();
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+				OLog.stackTrace(e);
+			}
+
+			OLog.info("Network Controller run task finished");
+			return;
+		}
+		
+		private void performCyclicTask() throws Exception {
+			while ( shouldContinueTask() ) {
 				try {
 					Thread.sleep(5000);
 				} catch (InterruptedException e) {
@@ -520,41 +563,140 @@ public class NetworkController extends AbstractController {
 				 * In theory, we should never be asleep while on busy state, so
 				 * exit from that too since that might indicate an error
 				 */
-				if (getState() != ControllerState.READY
-						|| _sendThreadRunning == false) {
+				if ( shouldContinueTask() == false ) {
 					break;
 				}
-
-				_queueLock.lock();
-				int queueSize = _sendTaskQueue.size();
-				_queueLock.unlock();
-
-				while (queueSize > 0) {
-					if (checkInternetConnectivity() != Status.OK) {
-						return;
-					}
-
-					/* Send the data and remove it from the queue */
-					_queueLock.lock();
-					sendData(_sendTaskQueue.remove()); // TODO
-					_queueLock.unlock();
-
-					/* Re-evaluate the size of the queue */
-					_queueLock.lock();
-					queueSize = _sendTaskQueue.size();
-					_queueLock.unlock();
-					
-					/* Unblock the await response thread with an
-					 *  interrupt if it exists */
-					_waitThreadLock.lock();
-					if (_awaitResponseThread != null) {
-						_awaitResponseThread.interrupt();
-					}
-					_waitThreadLock.unlock();
+				
+				Status status = Status.FAILED;
+				/* Attempt to process the send queue's contents */
+				try {
+					status = processSendQueue();
+				} catch(Exception e) {
+					OLog.err("Exception occurred: " + e.getMessage());
+					OLog.stackTrace(e);
+					status = Status.FAILED;
+				}
+				
+				if (status != Status.OK) {
+					break;
 				}
 			}
+			
+			/* Upon termination of the Send Thread, we should probably
+			 *  ensure that the queue is cleared out as well. */
+			unloadSendQueue();
+			
+			return;
+		}
+		
+		private boolean shouldContinueTask() {
+			if ( (getState() == ControllerState.READY) && 
+					(_sendThreadRunning == true) ) {
+				return true;
+			}
+			return false;
+		}
+		
+		private Status processSendQueue() throws Exception {
+			OLog.info("SendQueue Processing Started.");
+			int queueSize = getSendQueueSize();
 
-//			OLog.info("Network Controller run task finished");
+			while (queueSize > 0) {
+				if (checkInternetConnectivity() != Status.OK) {
+					return Status.FAILED;
+				}
+
+				/* Dequeue a SendableData object from the queue */
+				SendableData data = dequeueSendableData();
+				if (data == null) {
+					queueSize = getSendQueueSize();
+					return Status.OK;
+				}
+				
+				/* Send this data */
+				Status result = sendData(data);
+				/* If a sendData operation fails, check if the sendThread
+				 * 	should continue running. If not, break the loop. */
+				if ((result == Status.FAILED) &&
+					(_sendThreadRunning == false)) {
+					return Status.FAILED;
+				}
+
+				/* Re-evaluate the size of the queue */
+				queueSize = getSendQueueSize();
+				
+				/* Attempt to unblock the response thread (if it exists) */
+				unblockResponseThread();
+			}
+			OLog.info("SendQueue Processing Finished.");
+			return Status.OK;
+		}
+		
+		private SendableData dequeueSendableData() {
+			SendableData queueData = null;
+			
+			_queueLock.lock();
+			try {
+				queueData = _sendTaskQueue.remove();
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+				OLog.stackTrace(e);
+				queueData = null;
+			} finally {
+				_queueLock.unlock();
+			}
+			
+			return queueData;
+		}
+		
+		private int getSendQueueSize() {
+			int queueSize = -1;
+			
+			_queueLock.lock();
+			try {
+				queueSize = _sendTaskQueue.size();
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+				OLog.stackTrace(e);
+				queueSize = -1;
+			} finally {
+				_queueLock.unlock();
+			}
+			
+			return queueSize;
+		}
+		
+		private void unblockResponseThread() {
+			/* Unblock the await response thread with an
+			 *  interrupt if it exists */
+			_waitThreadLock.lock();
+			try {
+				_awaitResponseThread.interrupt();
+			} catch (NullPointerException e) {
+				/* If there are no response threads waiting, 
+				 * 	simply bypass this step */
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+				OLog.stackTrace(e);
+			} finally {
+				_waitThreadLock.unlock();
+			}
+			
+			return;
+		}
+		
+		private void unloadSendQueue() {
+			_queueLock.lock();
+			try {
+				_sendTaskQueue.clear();
+				_sendTaskQueue = null;
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+				OLog.stackTrace(e);
+			} finally {
+				_queueLock.unlock();
+			}
+			
 			return;
 		}
 	}

@@ -349,6 +349,26 @@ public class MainActivity extends Activity {
 	private OreadServiceListener.Stub _listener = new OreadServiceListener.Stub() {
 		@Override
 		public void handleWaterQualityData() throws RemoteException {
+			/* Do Nothing */
+			return;
+		}
+
+		@Override
+		public void handleOperationProcStateChanged() throws RemoteException {
+			/* Do Nothing */
+			return;
+		}
+
+		@Override
+		public void handleOperationProcChanged() throws RemoteException {
+			/* Do Nothing */
+			return;
+			
+		}
+
+		@Override
+		public void handleOperationTaskChanged() throws RemoteException {
+			/* Do Nothing */
 			return;
 		}
 	};
@@ -367,6 +387,14 @@ public class MainActivity extends Activity {
 				_readFragment.setServiceHandle(_serviceAPI);
 			}
 			
+			if (_logFragment != null) {
+				_logFragment.setServiceHandle(_serviceAPI);
+			}
+			
+			if (_guidedCalibFragment != null) {
+				_guidedCalibFragment.setServiceHandle(_serviceAPI);
+			}
+			
 			try {
 				_serviceAPI.addListener(_listener);
 			} catch (RemoteException e) {
@@ -379,7 +407,22 @@ public class MainActivity extends Activity {
 		@Override
 		public void onServiceDisconnected(ComponentName name) {
 			OLog.info("Disconnected from service");
+
+			if (_calibFragment != null) {
+				_calibFragment.setServiceHandle(null);
+			}
+
+			if (_readFragment != null) {
+				_readFragment.setServiceHandle(null);
+			}
 			
+			if (_logFragment != null) {
+				_logFragment.setServiceHandle(null);
+			}
+			
+			if (_guidedCalibFragment != null) {
+				_guidedCalibFragment.setServiceHandle(null);
+			}
 		}
 	};
 	

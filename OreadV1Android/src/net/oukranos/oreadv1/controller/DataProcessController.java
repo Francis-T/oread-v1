@@ -202,14 +202,19 @@ public class DataProcessController extends AbstractController {
 	
 	private Status processWaterQualityData(WaterQualityData d) {
 		/* Get the stored SiteDeviceData object */
-		SiteDeviceData siteData = 
+		SiteDeviceData origData = 
 				(SiteDeviceData) DSUtils
 					.getStoredObject(_mainInfo.getDataStore(), 
 							"site_device_data");
-		if (siteData == null) {
+		if (origData == null) {
 			writeErr("SiteDeviceData object not found");
 			return Status.FAILED;
 		}
+		
+		/* Copy the id and context into a new SiteDeviceData object */
+		SiteDeviceData siteData 
+			= new SiteDeviceData(origData.getId(), 
+								 origData.getContext());
 		
 		/* Add the water quality parameters as report data */
 		SiteDeviceReportData repData;
@@ -260,6 +265,15 @@ public class DataProcessController extends AbstractController {
 				(float)(d.turbidity), addtlInfo);
 		siteData.addReportData(repData);
 		
+		addtlInfo = "OK";
+		repData = new SiteDeviceReportData("Copper", "Water", 
+				(float)(d.copper), addtlInfo);
+		siteData.addReportData(repData);
+		repData = new SiteDeviceReportData("Zinc", "Water", 
+				(float)(d.zinc), addtlInfo);
+		siteData.addReportData(repData);
+		
+		/* Replace the old SiteDeviceData object */
 		DSUtils.updateStoredObject(_mainInfo.getDataStore(), "site_device_data", 
 				siteData);
 		

@@ -23,10 +23,9 @@ public class ConfigManager {
 	private static final String DEFAULT_CFG_FILE_PATH = FSMan.getDefaultFilePath();
 	private static final String DEFAULT_CFG_FILE_NAME = "oread_config.xml";
 	private static final String DEFAULT_CFG_FILE_TEMP_NAME = "oread_config_temp.xml";
-	private static final String DEFAULT_CFG_FULL_FILE_PATH = DEFAULT_CFG_FILE_PATH + "/" + DEFAULT_CFG_FILE_NAME;
+	private static final String DEFAULT_CFG_PREV_FILE_PATH	= DEFAULT_CFG_FILE_PATH + "/" + DEFAULT_CFG_FILE_TEMP_NAME;
+	private static final String DEFAULT_CFG_FULL_FILE_PATH 	= DEFAULT_CFG_FILE_PATH + "/" + DEFAULT_CFG_FILE_NAME;
 	private static final String DEFAULT_DEVICE_CONFIG_URL_BASE = "http://miningsensors.info/deviceconf";
-	//private static final String DEFAULT_DEVICE_CONFIG_URL_BASE = "http://miningsensors.ateneo.edu/deviceconf";
-	//private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "DV862808028030255";
 	private static final String DEFAULT_DEVICE_CONFIG_URL_ID = "TEST_DEVICE";
 	private static final long 	DEFAULT_CONFIG_FILE_AGE_LIMIT = (8 * 60 * 60 * 1000); // ~8 hours old
 	
@@ -182,34 +181,39 @@ public class ConfigManager {
 		return Status.OK;
 	}
 	
-	public Status runConfigFileUpdate() {
-		/* Get the old config file path */
-		String cfgFilePath = this.getFullConfigFilePath();
+	private Configuration retrieveOldConfig() {
+		String cfgFilePaths[] = {
+			this.getPrevConfigFilePath(),
+			this.getFullConfigFilePath() 
+		};
 		
-		/* Get the old config file */
-		Configuration oldConfig = this.getConfig(cfgFilePath);
-		if (oldConfig == null) {
+		Configuration oldConfig = null;
+		for (String filePath : cfgFilePaths) {
+			OLog.info("Attempting to load old config file: " + filePath);
+			oldConfig = getConfig(filePath);
+			if (oldConfig != null) {
+				OLog.info("Old config file loaded successfully");
+				return oldConfig;
+			}
+		}
+		
+		return null;
+	}
+	
+	public Status runConfigFileUpdate() {
+		_config = retrieveOldConfig();
+		if (_config == null) {
 			OLog.err("Failed to load old config file");
 			return Status.FAILED;
-		}
-		_config = oldConfig;
-
-		
-		/* Record the current system time as the last updated time 
-		 * 	for the config file */
-		if (_storedDataBridge != null) {
-			_storedDataBridge.put("LAST_CFG_UPDATE_TIME", "0");
-		} else {
-			OLog.warn("Stored data bridge unavailable");
 		}
 
 		/* Get the old config file age limit and time since last update */
 		long ageLimit = this.getConfigFileAgeLimit();
-		long lastUpdateAge = this.getConfigFileLastUpdateAge();
+		long lastUpdateAge = this.getTimeSinceLastConfigUpdate();
 		
 		/* If the elapsed time since the last config file update has hit the
 		 *   age limit, then a new config file should be downloaded */
-		if (lastUpdateAge > ageLimit) {
+		if (lastUpdateAge < ageLimit) {
 			OLog.info("Config file still up-to-date: " 
 					+ Long.toString(lastUpdateAge));
 			return Status.OK;
@@ -235,10 +239,9 @@ public class ConfigManager {
 		
 		/* Record the current system time as the last updated time 
 		 * 	for the config file */
-//		pDataStore.put("LAST_CFG_UPDATE_TIME", 
-//				Long.toString(System.currentTimeMillis()));
 		if (_storedDataBridge != null) {
-			_storedDataBridge.put("LAST_CFG_UPDATE_TIME", "0");
+			_storedDataBridge.put("LAST_CFG_UPDATE_TIME", 
+					Long.toString(System.currentTimeMillis()));
 		} else {
 			OLog.warn("Stored data bridge unavailable");
 		}
@@ -287,6 +290,19 @@ public class ConfigManager {
 	/*********************/
 	/** Private Methods **/
 	/*********************/
+	private String getPrevConfigFilePath() {
+		if (_config == null) {
+			return DEFAULT_CFG_PREV_FILE_PATH;
+		}
+		
+		String path = this.getConfigData("config_file_prev_path", "string");
+		if (path == null) {
+			return DEFAULT_CFG_PREV_FILE_PATH;
+		}
+		
+		return path;
+	}
+	
 	private String getFullConfigFilePath() {
 		if (_config == null) {
 			return DEFAULT_CFG_FULL_FILE_PATH;
@@ -316,17 +332,21 @@ public class ConfigManager {
 			return DEFAULT_CONFIG_FILE_AGE_LIMIT;
 		}
 		
+		String ageThrStr = d.getValue().replace("l", "");
 		try {
-			ageThreshold = Long.decode(d.getValue());
+			ageThreshold = Long.parseLong(ageThrStr);
 		} catch (NumberFormatException e) {
-			OLog.err("Could not decode age threshold: " + d.getValue());
+			OLog.err("Could not parse age threshold: [" + d.getValue() + "]");
+			ageThreshold = DEFAULT_CONFIG_FILE_AGE_LIMIT;
+		} catch (Exception e) {
+			OLog.err("Could not derive age threshold: " + d.getValue());
 			ageThreshold = DEFAULT_CONFIG_FILE_AGE_LIMIT;
 		}
 		
 		return ageThreshold;
 	}
 	
-	private long getConfigFileLastUpdateAge() {
+	private long getTimeSinceLastConfigUpdate() {
 		String result = null;
 		if (_storedDataBridge != null) {
 			result = _storedDataBridge.get("LAST_CFG_UPDATE_TIME");
@@ -339,16 +359,19 @@ public class ConfigManager {
 			OLog.warn("Config file has never been updated");
 			return 0l;
 		}
-		
+
 		Long lastUpdated = 0l;
 		try {
-			lastUpdated = Long.decode(result.trim());
+			lastUpdated = Long.parseLong(result.trim());
+		} catch (NumberFormatException e) {
+			OLog.err("Could not parse last config update time: " + result.trim());
+			lastUpdated = 0l;
 		} catch (Exception e) {
 			OLog.err("Exception ocurred: " + e.getMessage());
 			lastUpdated = 0l;
 		}
 		
-		return lastUpdated;
+		return (System.currentTimeMillis() - lastUpdated);
 	}
 	
 	private String getDeviceConfigUrl() {

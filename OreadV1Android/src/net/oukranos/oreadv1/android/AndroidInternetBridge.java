@@ -127,7 +127,7 @@ public class AndroidInternetBridge extends AndroidBridgeImpl implements IInterne
 		return null;
 	}
 	/** Private Methods **/
-	private Status sendData(SendableData sendableData) {
+	private Status sendData(SendableData sendableData) throws Exception {
 		if (_context == null) {
 			OLog.err("Not attached to an Android activity");
 			return Status.FAILED;
@@ -170,7 +170,11 @@ public class AndroidInternetBridge extends AndroidBridgeImpl implements IInterne
 			OLog.err("HttpPost execution failed");
 			OLog.err("Msg: " + e.getMessage());
 			return Status.FAILED;
+		} catch (Exception e) {
+			OLog.err("Exception ocurred: " + e.getMessage());
+			return Status.FAILED;
 		}
+		
 		if (httpResp == null) {
 			OLog.err("Failed to perform HttpPost");
 			return Status.FAILED;
@@ -217,7 +221,19 @@ public class AndroidInternetBridge extends AndroidBridgeImpl implements IInterne
 		@Override
 		public void run() {
 			OLog.info("Send task started");
+			
+			try {
+				performTask();
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+				OLog.stackTrace(e);
+			}
 
+			OLog.info("Send task finished");
+			return;
+		}
+		
+		private void performTask() throws Exception {
 			/* Obtain a reference to the ConnBridge */
 			IConnectivityBridge connBridge 
 				= (IConnectivityBridge) _mainInfo
@@ -240,8 +256,7 @@ public class AndroidInternetBridge extends AndroidBridgeImpl implements IInterne
 			
 			/* Send the data */
 			sendData(_data);
-
-			OLog.err("Send task finished");
+			
 			return;
 		}
 	}

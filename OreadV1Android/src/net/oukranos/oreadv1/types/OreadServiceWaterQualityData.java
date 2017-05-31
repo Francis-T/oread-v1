@@ -4,16 +4,6 @@ import android.os.Parcel;
 import android.os.Parcelable;
 
 public class OreadServiceWaterQualityData extends WaterQualityData implements Parcelable {
-//	protected int id = 0;
-//	protected long timestamp = 0;
-//	
-//	public double pH = 0.0;
-//	public double dissolved_oxygen = 0.0;
-//	public double conductivity = 0.0;
-//	public double temperature = 0.0;
-//	public double tds = 0.0;
-//	public double salinity = 0.0;
-	
 	public OreadServiceWaterQualityData(WaterQualityData data) {
 		super(data);
 	}
@@ -28,6 +18,8 @@ public class OreadServiceWaterQualityData extends WaterQualityData implements Pa
 		this.tds = p.readDouble();
 		this.salinity = p.readDouble();
 		this.turbidity = p.readDouble();
+		this.copper = p.readDouble();
+		this.zinc = p.readDouble();
 		return;
 	}
 
@@ -47,6 +39,8 @@ public class OreadServiceWaterQualityData extends WaterQualityData implements Pa
 		out.writeDouble(tds);
 		out.writeDouble(salinity);
 		out.writeDouble(turbidity);
+		out.writeDouble(copper);
+		out.writeDouble(zinc);
 	}
 	
 

@@ -153,14 +153,19 @@ public class DataUploadController extends AbstractController {
 		int recIdList[] = new int[CACHED_DATA_PULL_COUNT];
 
 		/* Get the stored SiteDeviceData object */
-		SiteDeviceData siteData = (SiteDeviceData) DSUtils
+		SiteDeviceData origData = (SiteDeviceData) DSUtils
 				.getStoredObject(_mainInfo.getDataStore(), 
 						SITE_OBJ_WQD_REF);
-		if (siteData == null) {
+		if (origData == null) {
 			writeErr("SiteDeviceData object not found");
 			return;
 		}
 
+		/* Copy the id and context into a new SiteDeviceData object */
+		SiteDeviceData siteData 
+			= new SiteDeviceData(origData.getId(), 
+								 origData.getContext());
+		
 		/* Start querying the database */
 		if (_databaseController.startQuery(CACHED_DATA_WQ_TYPE) != Status.OK) {
 			return;

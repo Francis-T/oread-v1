@@ -408,6 +408,16 @@ public class AutomationController extends AbstractController implements SensorEv
 			setState(ControllerState.READY);
 			return writeErr("Failed to activate " + device.getName());
 		}
+
+		/* If this is a blocking device, wait until a response is received */
+		if (device.isBlocking()) {
+			long sleepTime = device.getTimeoutDuration();
+			try {
+				Thread.sleep(sleepTime);
+			} catch (InterruptedException e) {
+				OLog.info("Interrupted");
+			}
+		}
 		
 		_activeMechanism = null;
 		_automationControllerThread = null;
@@ -501,8 +511,9 @@ public class AutomationController extends AbstractController implements SensorEv
 
 		/* If this is a blocking device, wait until a response is received */
 		if (device.isBlocking()) {
+			long sleepTime = device.getTimeoutDuration();
 			try {
-				Thread.sleep(1000);
+				Thread.sleep(sleepTime);
 			} catch (InterruptedException e) {
 				OLog.info("Interrupted");
 			}
@@ -613,7 +624,7 @@ public class AutomationController extends AbstractController implements SensorEv
 		/* Setup each control device */
 		for (ControlMechanism device : _controlDevices) {
 			/* Initialize the control device */
-			if (device.initialize() != Status.OK) {
+			if (device.initialize(_mainInfo) != Status.OK) {
 				return writeErr("Failed to initialize device:" 
 						+ device.getName() );
 			}

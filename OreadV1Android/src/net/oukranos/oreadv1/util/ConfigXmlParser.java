@@ -27,11 +27,13 @@ public class ConfigXmlParser {
 		File f = new File(filename);
 		
 		if (f.exists() == false) {
+			Log.e("ERROR", "ERROR: Config file does not exist");
 			return Status.FAILED;
 		}
 		
 		xpp = getParser(); 
 		if (xpp == null) {
+			Log.e("ERROR", "ERROR: Could not initialize XML parser");
 			return Status.FAILED;
 		}
 		

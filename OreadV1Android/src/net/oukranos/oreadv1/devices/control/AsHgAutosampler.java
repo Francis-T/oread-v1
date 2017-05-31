@@ -2,6 +2,7 @@ package net.oukranos.oreadv1.devices.control;
 
 import net.oukranos.oreadv1.interfaces.IPersistentDataBridge;
 import net.oukranos.oreadv1.types.ControlMechanism;
+import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.Status;
 
 public class AsHgAutosampler extends ControlMechanism {
@@ -11,8 +12,8 @@ public class AsHgAutosampler extends ControlMechanism {
 
 	public AsHgAutosampler() {
 		setName("AsHg Autosampler");
-		setBlocking(true);
-		setTimeoutDuration(600000);
+		setBlocking(false);
+		setTimeoutDuration(10000);
 		setPollable(true);
 		setPollDuration(30000);
 
@@ -20,7 +21,7 @@ public class AsHgAutosampler extends ControlMechanism {
 	}
 	
 	@Override 
-	public Status initialize() {
+	public Status initialize(MainControllerInfo mainInfo) {
 		IPersistentDataBridge pDataStore = getPersistentDataBridge();
 		if (pDataStore == null) {
 			OLog.err("PersistentDataBridge unavailable");
@@ -29,7 +30,7 @@ public class AsHgAutosampler extends ControlMechanism {
 
 		pDataStore.put("ASHG_START_TIME", "0l");
 		
-		return super.initialize();
+		return super.initialize(mainInfo);
 	}
 
 	@Override
@@ -104,25 +105,23 @@ public class AsHgAutosampler extends ControlMechanism {
 
 	@Override
 	public boolean shouldContinuePolling() {
-		
 		byte data[] = getReceivedData();
-		
 		if (data == null) {
 			OLog.warn("Received data is empty");
 			return true;
 		}
+
+		IPersistentDataBridge pDataStore = getPersistentDataBridge();
+		if (pDataStore == null) {
+			OLog.err("PersistentDataBridge unavailable");
+			return false;
+		}
+		
 		String response = new String(data).trim();
 		if (response.contains("State: ")) {
 			int startIdx 	= response.indexOf("State: ");
 			char stateChar 	= response.charAt(startIdx + 7);
 			OLog.info("Found Response: " + response);
-
-			IPersistentDataBridge pDataStore = getPersistentDataBridge();
-
-			if (pDataStore == null) {
-				OLog.err("PersistentDataBridge unavailable");
-				return false;
-			}
 			
 			/* If the Autosampler is at State: 3, then that means the mobile
 			 *  phone can begin capturing an image of the LFSB */
@@ -140,7 +139,8 @@ public class AsHgAutosampler extends ControlMechanism {
 			
 			return false;
 		}
-
+		
+		pDataStore.put("CURR_ASHG_STATE", "9" );
 		OLog.info("Found Response: " + response);
 		return true;
 	}

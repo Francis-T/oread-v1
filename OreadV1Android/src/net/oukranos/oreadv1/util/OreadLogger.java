@@ -63,6 +63,28 @@ public class OreadLogger {
 		return;
 	}
 	
+	public void stackTrace(Exception e) {
+		StackTraceElement[] stackTrace = e.getStackTrace();
+		
+		int limit = 20;
+		for (StackTraceElement ste : stackTrace) {
+			String stInfo = 
+					ste.getClassName() + "." 
+					+ ste.getMethodName() + "()"
+					+ " at Line " 
+					+ ste.getLineNumber();
+			
+			this.err("    " + stInfo );
+			
+			limit++;
+			if (limit >= 20) {
+				break;
+			}
+		}
+		
+		return;
+	}
+	
 	public String getLastLogMessages(int maxLines) {
 		String lastLogs = "";
 		

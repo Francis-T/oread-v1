@@ -24,6 +24,9 @@ import net.oukranos.oreadv1.types.ControllerState;
 import net.oukranos.oreadv1.types.DataStore;
 import net.oukranos.oreadv1.types.MainControllerInfo;
 import net.oukranos.oreadv1.types.OreadServiceControllerStatus;
+import net.oukranos.oreadv1.types.OreadServiceProcChangeInfo;
+import net.oukranos.oreadv1.types.OreadServiceProcStateChangeInfo;
+import net.oukranos.oreadv1.types.OreadServiceTaskChangeInfo;
 import net.oukranos.oreadv1.types.OreadServiceWaterQualityData;
 import net.oukranos.oreadv1.types.Status;
 import net.oukranos.oreadv1.types.WaterQualityData;
@@ -57,8 +60,12 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	private String _directive = null;
 	OreadServiceWakeReceiver _wakeAlarm = null;
 	private Object _wqDataLock = new Object();
-	private OreadServiceWaterQualityData _wqData = null;
 	private List<OreadServiceListener> _serviceListeners = new ArrayList<OreadServiceListener>();
+
+	private OreadServiceWaterQualityData 	_wqData 				= null;
+	private OreadServiceProcStateChangeInfo _procStateChangeInfo 	= null;
+	private OreadServiceProcChangeInfo 		_procChangeInfo 		= null;
+	private OreadServiceTaskChangeInfo 		_taskChangeInfo 		= null;
 	
 	/* State variables */
 	private ServiceState _state = ServiceState.UNKNOWN;
@@ -78,26 +85,33 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startId) {
-		OLog.info("OreadService onStartCommand() invoked");
-		if (intent == null) {
-			OLog.info("OreadService onStartCommand() finished prematurely");
-			return super.onStartCommand(intent, flags, startId);
-		}
+		try {
+			
+			OLog.info("OreadService onStartCommand() invoked");
+			if (intent == null) {
+				OLog.info("OreadService onStartCommand() finished prematurely");
+				return super.onStartCommand(intent, flags, startId);
+			}
+	
+			_state = ServiceState.STARTED;
+			
+			/* Obtain the originator and directive variables from the intent */
+			_originator = intent.getStringExtra(OreadServiceWakeReceiver.EXTRA_ORIGINATOR);
+			_directive = intent.getStringExtra(OreadServiceWakeReceiver.EXTRA_DIRECTIVE);
+			
+			/* If the service was triggered by the OreadService Wake alarm, then the
+			 *   service has to automatically activate the MainController */
+			if ( this.isWakeTriggered() == true ) {
+				OLog.info("OreadService onStartCommand() triggers service activation");
+				activateService();
+			}
+			
+			OLog.info("OreadService onStartCommand() finished");
 
-		_state = ServiceState.STARTED;
-		
-		/* Obtain the originator and directive variables from the intent */
-		_originator = intent.getStringExtra(OreadServiceWakeReceiver.EXTRA_ORIGINATOR);
-		_directive = intent.getStringExtra(OreadServiceWakeReceiver.EXTRA_DIRECTIVE);
-		
-		/* If the service was triggered by the OreadService Wake alarm, then the
-		 *   service has to automatically activate the MainController */
-		if ( this.isWakeTriggered() == true ) {
-			OLog.info("OreadService onStartCommand() triggers service activation");
-			activateService();
+		} catch(Exception e) {
+			OLog.err("Something went wrong: " + e.getMessage());
+			OLog.stackTrace(e);
 		}
-		
-		OLog.info("OreadService onStartCommand() finished");
 		return super.onStartCommand(intent, flags, startId);
 	}
 	
@@ -105,12 +119,19 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	public void onCreate() {
 		super.onCreate();
 		
-		_state = ServiceState.UNKNOWN;
+		try {
+			
+			_state = ServiceState.UNKNOWN;
+			
+			/* Initialize the main controller upon creation */
+			initializeMainController();
+			
+			OLog.info("Service created.");
 		
-		/* Initialize the main controller upon creation */
-		initializeMainController();
-		
-		OLog.info("Service created.");
+		} catch(Exception e) {
+			OLog.err("Something went wrong: " + e.getMessage());
+			OLog.stackTrace(e);
+		}
 		return;
 	}
 	
@@ -123,74 +144,145 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	
 	@Override
 	public void onDestroy() {
-		super.onDestroy();
-		
-		_originator = null;
-		_directive = null;
-		
-		/* Attempt to deactivate the service if possible */
-		deactivateService();
-		
-		OLog.info("Service destroyed.");
+		try {
+			
+			super.onDestroy();
+			
+			_originator = null;
+			_directive = null;
+			
+			/* Attempt to deactivate the service if possible */
+			deactivateService();
+			
+			OLog.info("Service destroyed.");
+			
+		} catch(Exception e) {
+			OLog.err("Something went wrong: " + e.getMessage());
+			OLog.stackTrace(e);
+		}
 		return;
 	}
 
 	@Override
 	public void onDataAvailable() {
-		if (_pullDataTask != null) {
-			OLog.err("An old pull data task still exists!");
-			if (_pullDataTask.getStatus() ==  AsyncTask.Status.FINISHED) {
-				_pullDataTask = null;
-			} else {
-				_pullDataTask.cancel(true);
-				_pullDataTask = null;
+		try {
+			
+			if (_pullDataTask != null) {
+				OLog.err("An old pull data task still exists!");
+				if (_pullDataTask.getStatus() ==  AsyncTask.Status.FINISHED) {
+					_pullDataTask = null;
+				} else {
+					_pullDataTask.cancel(true);
+					_pullDataTask = null;
+				}
 			}
+			
+			_pullDataTask = new PullDataTask();
+			_pullDataTask.execute();
+			
+		} catch (Exception e) {
+			OLog.err("Something went wrong: " + e.getMessage());
+			OLog.stackTrace(e);
 		}
-		
-		_pullDataTask = new PullDataTask();
-		_pullDataTask.execute();
-		
 		return;
 	}
 
 	@Override
 	public void onFinish() {
-		_originator = null;
-		_directive = null;
-
 		try {
-			Thread.sleep(5000);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-		
-		/* Attempt to deactivate the service if possible */
-		deactivateService();
-		
-		/* Schedule the next wake up event before terminating */
-		if (this._state == ServiceState.ACTIVE) {
-			scheduleNextWakeUpEvent();
-		}
-
-		/* If OreadService has been started by a wake trigger, then close the service
-		 *   once the MainController's task is finished. */
-		if (this.isWakeTriggered()) {
 			
-			/* If the service is no longer bound to an app, then the service can
-			 * be fully closed while waiting for the next wake trigger */
-			if (!_isServiceBound) {
-				stopSelf();
+			_originator = null;
+			_directive = null;
+	
+			try {
+				Thread.sleep(5000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			
+			/* Attempt to deactivate the service if possible */
+			deactivateService();
+			
+			/* Schedule the next wake up event before terminating */
+			if (this._state == ServiceState.ACTIVE) {
+				scheduleNextWakeUpEvent();
+			}
+	
+			/* If OreadService has been started by a wake trigger, then close the service
+			 *   once the MainController's task is finished. */
+			if (this.isWakeTriggered()) {
+				
+				/* If the service is no longer bound to an app, then the service can
+				 * be fully closed while waiting for the next wake trigger */
+				if (!_isServiceBound) {
+					stopSelf();
+				}
+			}
+			
+			this._state = ServiceState.UNKNOWN;
+			
+			/* Destroy the MainController */
+			destroyMainController();
+		
+		} catch (Exception e) {
+			OLog.err("Something went wrong: " + e.getMessage());
+			OLog.stackTrace(e);
+		}
+		return;
+	}
+
+	@Override
+	public void onProcStateChanged(String newState) {
+		_procStateChangeInfo = new OreadServiceProcStateChangeInfo(newState);
+		
+		/* Notify the listeners */
+		synchronized (_serviceListeners) {
+			for (OreadServiceListener l : _serviceListeners) {
+				try {
+					l.handleOperationProcStateChanged();
+				} catch (RemoteException e) {
+					OLog.err("Failed to notify listeners");
+				}
 			}
 		}
 		
-		this._state = ServiceState.UNKNOWN;
+		return;
+	}
+
+	@Override
+	public void onProcChanged(String newProc) {
+		_procChangeInfo = new OreadServiceProcChangeInfo(newProc);
 		
-		/* Destroy the MainController */
-		destroyMainController();
+		/* Notify the listeners */
+		synchronized (_serviceListeners) {
+			for (OreadServiceListener l : _serviceListeners) {
+				try {
+					l.handleOperationProcChanged();
+				} catch (RemoteException e) {
+					OLog.err("Failed to notify listeners");
+				}
+			}
+		}
 		
 		return;
 	}
-	
+
+	@Override
+	public void onTaskChanged(String newTask) {
+		_taskChangeInfo = new OreadServiceTaskChangeInfo(newTask);
+		
+		/* Notify the listeners */
+		synchronized (_serviceListeners) {
+			for (OreadServiceListener l : _serviceListeners) {
+				try {
+					l.handleOperationTaskChanged();
+				} catch (RemoteException e) {
+					OLog.err("Failed to notify listeners");
+				}
+			}
+		}
+		return;
+	};
 
 	/**********************************************************************/
 	/**  Private Methods                                                 **/
@@ -604,14 +696,6 @@ public class OreadService extends Service implements MainControllerEventHandler,
 	private OreadServiceApi.Stub _apiEndpoint = new OreadServiceApi.Stub() {
 
 		@Override
-		public OreadServiceWaterQualityData getData() throws RemoteException {
-			synchronized (_wqDataLock) {
-				reloadOldWaterQualityData();
-				return _wqData;
-			}
-		}
-
-		@Override
 		public void addListener(OreadServiceListener listener)
 				throws RemoteException {
 			synchronized(_serviceListeners) {
@@ -668,6 +752,14 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		}
 
 		@Override
+		public OreadServiceWaterQualityData getData() throws RemoteException {
+			synchronized (_wqDataLock) {
+				reloadOldWaterQualityData();
+				return _wqData;
+			}
+		}
+
+		@Override
 		public OreadServiceControllerStatus getStatus() throws RemoteException {
 			if (_mainController != null) {
 				return new OreadServiceControllerStatus(_mainController.getControllerStatus());
@@ -678,6 +770,22 @@ public class OreadService extends Service implements MainControllerEventHandler,
 		@Override
 		public String getLogs(int lines) throws RemoteException {
 			return OLog.getLastLogMessages(lines);
+		}
+
+		@Override
+		public OreadServiceProcStateChangeInfo getProcStates()
+				throws RemoteException {
+			return _procStateChangeInfo;
+		}
+
+		@Override
+		public OreadServiceProcChangeInfo getProc() throws RemoteException {
+			return _procChangeInfo;
+		}
+
+		@Override
+		public OreadServiceTaskChangeInfo getTask() throws RemoteException {
+			return _taskChangeInfo;
 		}
 		
 	};
@@ -691,5 +799,5 @@ public class OreadService extends Service implements MainControllerEventHandler,
 
 	private enum ServiceState { 
 		UNKNOWN, STARTED, ACTIVE, STOPPED
-	};
+	}
 }

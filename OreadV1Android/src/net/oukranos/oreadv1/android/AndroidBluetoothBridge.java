@@ -49,6 +49,8 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 	private Lock _connThreadLock = null;
 	private Lock _listenThreadLock = null;
 	
+	private static final long MAX_BLUETOOTH_SOCKET_WAIT = 5000;
+	
 	private AndroidBluetoothBridge() {
 		return;
 	}
@@ -163,6 +165,7 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 			if (_bluetoothConnectThread != null) {
 				_bluetoothConnectThread.cancel();
 			}
+			OLog.err("Connect unsuccessful");
 			return Status.FAILED;
 		}
 		
@@ -558,6 +561,64 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 		}
 		
 		public void run() {
+			OLog.info("Connection to " 
+						+ _name + "/" 
+						+ _remoteAddress + " "
+						+ "started.");
+			try {
+				performCyclicTask();
+			} catch (Exception e) {
+				OLog.err("Failed to broadcast data to " 
+						+ _name + "/" 
+						+ _remoteAddress + "!");
+				OLog.err("Exception encountered: " + e.getMessage());
+				OLog.stackTrace(e);
+			}
+
+			OLog.info("Connection to " 
+						+ _name + "/" 
+						+ _remoteAddress + " "
+						+ "ended.");
+			return;
+		}
+		
+		public void write(byte[] buffer) {
+			try {
+				if (performWrite(buffer) != Status.OK) {
+					OLog.err("Failed to broadcast data to " 
+								+ _name + "/" 
+								+ _remoteAddress + "!");
+				}
+			} catch (Exception e) {
+				OLog.err("Failed to broadcast data to " 
+						+ _name + "/" 
+						+ _remoteAddress + "!");
+				OLog.err("Exception encountered: " + e.getMessage());
+				OLog.stackTrace(e);
+			}
+			
+			return;
+		}
+		
+		public void cancel() {
+			try {
+				if (performCancel() != Status.OK) {
+					OLog.err("Failed to cancel connection to " 
+							+ _name + "/" 
+							+ _remoteAddress + "!");
+				}
+			} catch (Exception e) {
+				OLog.err("Failed to cancel connection to " 
+						+ _name + "/" 
+						+ _remoteAddress + "!");
+				OLog.err("Exception encountered: " + e.getMessage());
+				OLog.stackTrace(e);
+			}
+			
+			return;
+		}
+		
+		private void performCyclicTask() {
 			int readableBytes = 0;
 			if ( (_inputStream == null) || (_outputStream == null) ) {
 				OLog.err("No streams available for this BluetoothConnection");
@@ -569,7 +630,7 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 					readableBytes = _inputStream.available();
 				} catch (IOException e) {
 					OLog.err("Encountered an IOEXCEPTION upon checking stream");
-					e.printStackTrace();
+					OLog.stackTrace(e);
 					break;
 				}
 				
@@ -580,6 +641,7 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 						_inputStream.read(buffer);
 					} catch (IOException e) {
 						OLog.err("Encountered an IOEXCEPTION upon reading from stream");
+						OLog.stackTrace(e);
 					}
 					
 					/* Notify the BluetoothController here */
@@ -602,18 +664,19 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 			_isConnected = false;
 			detachConnection();
 			OLog.info("Disconnected from " + this.getDeviceName() + "/" +this.getDeviceAddress());
+			
 			return;
 		}
 		
-		public void write(byte[] buffer) {
+		private Status performWrite(byte[] buffer) {
 			if (buffer == null) {
 				OLog.err("Invalid parameters");
-				return;
+				return Status.FAILED;
 			}
 			
 			if (_outputStream == null) {
 				OLog.err("Output stream unavailable");
-				return;
+				return Status.FAILED;
 			}
 			
 			try {
@@ -622,21 +685,23 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 				OLog.err("Encountered an IOEXCEPTION upon writing to stream");
 				detachConnection();
 			}
-			return;
+			
+			return Status.OK;
 		}
 		
-		public void cancel() {
+		private Status performCancel() {
 			if (_socket == null) {
 				OLog.err("Invalid BluetoothConnection socket");
 				_isConnected = false;
 				detachConnection();
-				return;
+				return Status.FAILED;
 			}
 			
 			try {
 				_socket.close();
 			} catch (IOException e) {
 				OLog.err("Failed to close BluetoothConnection socket");
+				OLog.stackTrace(e);
 			}
 			
 			_isConnected = false;
@@ -644,7 +709,7 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 			
 			OLog.info("Bluetooth Connection canceled");
 			
-			return;
+			return Status.OK;
 		}
 		
 		private void detachConnection() {
@@ -675,34 +740,13 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 		}
 
 		public void run() {
-			BluetoothSocket connSocket = null;
-
-			_isRunning = false;
 			OLog.info("BluetoothListenerThread started.");
 
-			while (_isRunning) {
-				if (_bluetoothServerSocket == null) {
-					OLog.err("No server socket found");
-					this.cancel();
-					return;
-				}
-				
-				try {
-					connSocket = _bluetoothServerSocket.accept();
-					if (connSocket != null) {
-						synchronized (this) {
-							OLog.info("Incoming connection from: " + 
-										connSocket.getRemoteDevice().getName());
-							
-							/* Attempt to accept the incoming connection */
-							connectDevice(connSocket);
-						}
-					}
-				} catch (IOException e) {
-					OLog.err("Failed to accept an incoming Bluetooth socket connection: " +
-							"type=" + (_useSecureRfComm ? "Secure" : "Insecure"));
-					this.cancel();
-				}
+			try {
+				performTask();
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+				OLog.stackTrace(e);
 			}
 			
 			OLog.info("BluetoothListenerThread finished.");
@@ -728,7 +772,38 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 		}
 		
 		/** Private Methods **/
-		@TargetApi(Build.VERSION_CODES.GINGERBREAD_MR1)
+		private void performTask() {
+			BluetoothSocket connSocket = null;
+			_isRunning = false;
+			
+			while (_isRunning) {
+				if (_bluetoothServerSocket == null) {
+					OLog.err("No server socket found");
+					this.cancel();
+					return;
+				}
+				
+				try {
+					connSocket = _bluetoothServerSocket.accept();
+					if (connSocket != null) {
+						synchronized (this) {
+							OLog.info("Incoming connection from: " + 
+										connSocket.getRemoteDevice().getName());
+							
+							/* Attempt to accept the incoming connection */
+							connectDevice(connSocket);
+						}
+					}
+				} catch (IOException e) {
+					OLog.err("Failed to accept an incoming Bluetooth socket connection: " +
+							"type=" + (_useSecureRfComm ? "Secure" : "Insecure"));
+					this.cancel();
+				}
+			}
+			
+			return;
+		}
+		
 		private BluetoothServerSocket getServerSocket(boolean useSecureRfComm) {
 			BluetoothServerSocket tempSocket = null;
 			
@@ -749,8 +824,7 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 			return tempSocket;
 		}
 	}
-
-	@TargetApi(Build.VERSION_CODES.GINGERBREAD_MR1)
+	
 	private class BluetoothConnectThread extends Thread {
 		private BluetoothSocket _bluetoothSocket = null;
 		private BluetoothDevice _bluetoothDevice = null;
@@ -785,41 +859,15 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 		}
 		
 		public void run() {
-			OLog.info("ConnectThread started.");
-			while (_bluetoothSocket == null) {
-				try {
-					Thread.sleep(100);
-				} catch (InterruptedException e1) {
-					e1.printStackTrace();
-				}
+			OLog.info("ConnectThread Started.");
+			
+			try {
+				performTask();
+			} catch (Exception e) {
+				OLog.err("Exception occurred: " + e.getMessage());
+				OLog.stackTrace(e);
 			}
 			
-			// Always cancel discovery because it will slow down a connection
-			_bluetoothAdapter.cancelDiscovery();
-	
-			// Make a connection to the BluetoothSocket
-			try {
-				// This is a blocking call and will only return on a
-				// successful connection or an exception
-				if (_bluetoothSocket != null) {
-					_bluetoothSocket.connect();
-				}
-			} catch (IOException e) {
-				// Close the socket
-				try {
-					if (_bluetoothSocket != null) {
-						_bluetoothSocket.close();
-					}
-				} catch (IOException e2) {
-					OLog.err("Failed to close Bluetooth Connect Thread: " +
-							"type=" + (_useSecureRFComm ? "Secure" : "Insecure"));
-				}
-				_bluetoothConnectThread = null;
-				return;
-			}
-	
-			// Start the connected thread
-			connectDevice(_bluetoothSocket);
 			OLog.info("ConnectThread finished.");
 		}
 		
@@ -837,8 +885,72 @@ public class AndroidBluetoothBridge extends AndroidBridgeImpl implements IBlueto
 //			}
 		}
 		
+		private void performTask() {
+			waitForBluetoothSocket(MAX_BLUETOOTH_SOCKET_WAIT);
+			
+			// Always cancel discovery because it will slow down a connection
+			_bluetoothAdapter.cancelDiscovery();
+	
+			// Make a connection to the BluetoothSocket
+			try {
+				// This is a blocking call and will only return on a
+				// successful connection or an exception
+				if (_bluetoothSocket != null) {
+					_bluetoothSocket.connect();
+				}
+			} catch (IOException connIOException) {
+				// Close the socket
+				try {
+					if (_bluetoothSocket != null) {
+						_bluetoothSocket.close();
+					}
+				} catch (IOException closeIOException) {
+					OLog.err("Failed to close Bluetooth Connect Thread " +
+							"due to an IO Exception: " + 
+							closeIOException.getMessage());
+					OLog.stackTrace(closeIOException);
+				}
+				
+				OLog.warn("Failed to connect to Bluetooth socket due to an IOException");
+				OLog.stackTrace(connIOException);
+				
+				_bluetoothConnectThread = null;
+				return;
+			}
+	
+			// Start the connected thread
+			connectDevice(_bluetoothSocket);
+			
+			return;
+		}
+		
 		private String getDeviceAddress() {
 			return _deviceAddress;
+		}
+		
+		private void waitForBluetoothSocket(long timeout) {
+			long waitStart = System.currentTimeMillis();
+			long elapsedTime = 0;
+			
+			while ( (_bluetoothSocket == null) &&
+					(elapsedTime < timeout) ) {
+				try {
+					Thread.sleep(100);
+				} catch (InterruptedException e) {
+					OLog.warn("Wait for BluetoothSocket interrupted: ");
+				}
+				
+				elapsedTime = (System.currentTimeMillis() - waitStart);
+				if (elapsedTime > timeout) {
+					break;
+				}
+			}
+			
+			if (_bluetoothSocket == null) {
+				OLog.err("BluetoothSocket unavailable");
+			}
+			
+			return;
 		}
 		
 	}

@@ -3,9 +3,7 @@ package net.oukranos.oreadv1.controller;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 import net.oukranos.oreadv1.interfaces.AbstractController;
@@ -744,7 +742,8 @@ public class MainController extends AbstractController implements MethodEvaluato
 		
 		Long interval = null;
 		try {
-			interval = Long.decode((String)(d.getObject()));
+			String sleepDurStr = ((String) d.getObject()).replace("l", "");
+			interval = Long.parseLong(sleepDurStr);
 		} catch (NumberFormatException e) {
 			interval = DEFAULT_SLEEP_INTERVAL;
 		}
@@ -999,8 +998,6 @@ public class MainController extends AbstractController implements MethodEvaluato
 	/** XXX **************************** XXX **/
 	/** XXX END: Testing Command Methods XXX **/
 	/** XXX **************************** XXX **/
-	
-	
 	private void notifyRunTaskFinished() {
 		if (_eventHandlers == null) {
 			return;
@@ -1014,8 +1011,87 @@ public class MainController extends AbstractController implements MethodEvaluato
 		return;
 	}
 	
+	private void notifyOperationStateChange() {
+		IPersistentDataBridge pDataStore = getPersistentDataBridge();
+		if (pDataStore != null) {
+			String calibState 		= pDataStore.get("CURR_CALIB_STATE");
+			String wqReadState 	 	= pDataStore.get("CURR_WQ_READ_STATE");
+			String autosamplerState = pDataStore.get("CURR_ASHG_STATE");
+			String lastCalib = 
+					Long.toString(getTimeSinceLastUpdate("LAST_CALIB_TIME"));
+			String lastLfsb = 
+					Long.toString(getTimeSinceLastUpdate("LAST_LFSB_CAPTURE_TIME"));
+			String lastWQRead = 
+					Long.toString(getTimeSinceLastUpdate("LAST_WQ_READ_TIME"));
+			
+			/* Put the string together */
+			String str = "| ";
+			str += "CAL: " + calibState + " | ";
+			str += "WQR: " + wqReadState + " | ";
+			str += "AUS: " + autosamplerState + " |\n";
+			str += "LastCalib: " + lastCalib + "\n";
+			str += "LastLfsb:  " + lastLfsb + "\n";
+			str += "LastWQ:    " + lastWQRead + "\n";
+
+			for (MainControllerEventHandler e : _eventHandlers) {
+				e.onProcStateChanged(str);
+			}
+		}
+		
+	}
+	
+	private void notifyProcedureChange(String proc) {
+		for (MainControllerEventHandler e : _eventHandlers) {
+			if (proc != null) {
+				e.onProcChanged(proc);
+			} else {
+				e.onProcChanged("---");
+			}
+		}
+		
+		return;
+	}
+	
+	private void notifyTaskChange(String task) {
+		for (MainControllerEventHandler e : _eventHandlers) {
+			if (task != null) {
+				e.onTaskChanged(task);
+			} else {
+				e.onTaskChanged("---");
+			}
+		}
+		
+		return;
+	}
+	
 	private MethodEvaluatorIntf getMethodEvaluator() {
 		return this;
+	}
+	
+	private long getTimeSinceLastUpdate(String pDataKey) {
+		IPersistentDataBridge pDataStore = getPersistentDataBridge();
+		if (pDataStore != null) {
+			String result = null;
+			/* Pull the time from the persistent data store using
+			 *  the specified data key */
+			result = pDataStore.get(pDataKey);
+			
+			if (result == null) {
+				result = "0l";
+			}
+			
+			/* Parse the last updated time */
+			long lLastUpdateTime = 0l;
+			try {
+				lLastUpdateTime = Long.parseLong(result);
+			} catch (Exception e) {
+				lLastUpdateTime = 0l;
+			}
+			
+			return (System.currentTimeMillis() - lLastUpdateTime);
+		}
+		
+		return 0;
 	}
 	
 	/*******************/
@@ -1027,6 +1103,8 @@ public class MainController extends AbstractController implements MethodEvaluato
 		@Override
 		public void run() {
 			OLog.info("Run Task started");
+
+			notifyOperationStateChange();
 			
 			/* Load the main config for faster reference */
 			_runConfig = _mainInfo.getConfig();
@@ -1107,6 +1185,9 @@ public class MainController extends AbstractController implements MethodEvaluato
 		private Status executeProcedure(Procedure p) {
 			Status retStatus = Status.FAILED;
 			List<Task> taskList = p.getTaskList();
+
+			notifyOperationStateChange();
+			notifyProcedureChange(p.getId());
 			
 			for (Task t : taskList) {
 				if (getState() == ControllerState.UNKNOWN) {
@@ -1149,6 +1230,10 @@ public class MainController extends AbstractController implements MethodEvaluato
 					break;
 				}
 			}
+
+			notifyProcedureChange("(" + p.getId() + ")");
+			notifyOperationStateChange();
+			
 			return retStatus;
 		}
 		
@@ -1157,6 +1242,8 @@ public class MainController extends AbstractController implements MethodEvaluato
 			/* Initialize the task execution timer variables */
 			long taskStart = 0;
 			long taskEnd = 0;
+			
+			notifyTaskChange(t.getId());
 			
 			try {
 				taskStart = System.currentTimeMillis();
@@ -1178,6 +1265,8 @@ public class MainController extends AbstractController implements MethodEvaluato
 						Long.toString(taskEnd-taskStart) + "msecs");
 				return Status.FAILED;
 			}
+			notifyTaskChange("(" + t.getId() + ")");
+			
 			OLog.info("Task Finished: " + t.toString() + " at " + 
 					Long.toString(taskEnd-taskStart) + "msecs");
 			return Status.OK;
@@ -1249,51 +1338,6 @@ public class MainController extends AbstractController implements MethodEvaluato
 			}
 			
 			return runList;
-		}
-		
-		private Map<TriggerCondition,Procedure> generateRunMap() {
-			/* Initialize the object lists */
-			Map<TriggerCondition,Procedure> runMap 
-				= new HashMap<TriggerCondition,Procedure>();
-			List<TriggerCondition> condList = _runConfig.getConditionList();
-			
-			/* Cycle through each trigger condition */
-			for (TriggerCondition cond : condList) {
-	            /* Extract the procedure id from the condition */
-				String procId = cond.getProcedure();
-				if (procId == null) {
-					OLog.warn("Invalid procedure in condition: " 
-								+ cond.getId());
-					continue;
-				}
-				
-				/* Retrieve the equivalent Procedure object */
-	            Procedure proc = _runConfig.getProcedure(procId);
-	            if (proc == null) {
-	            	OLog.warn("Procedure not found in config: " 
-	            				+ cond.getProcedure());
-	            	OLog.warn("Failed to fully process condition: "
-	            				+ cond.getCondition());
-	            	continue;
-	            }
-	            
-	            /* In the runMap, each TriggerCondition is unique and
-	             *  has one or more Procedures mapped to it. 
-	             *  
-	             * If the runMap already contains a TriggerCondition, 
-	             *  then log a warning and skip it. */
-	            if ( runMap.containsKey(cond) )
-	            {
-	            	OLog.warn("Run List already contains condition: " 
-	            				+ cond.getId());
-	            	continue;
-	            }
-	            
-	            /* Add the TriggerCondition/Procedure pair to the runMap */
-	            runMap.put(cond, proc);
-			}
-
-			return runMap;
 		}
 
 		

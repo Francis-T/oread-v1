@@ -13,6 +13,9 @@ import java.util.TimeZone;
 import net.oukranos.oreadv1.R;
 import net.oukranos.oreadv1.interfaces.OreadServiceApi;
 import net.oukranos.oreadv1.interfaces.OreadServiceListener;
+import net.oukranos.oreadv1.types.ProcChangeInfo;
+import net.oukranos.oreadv1.types.ProcStateChangeInfo;
+import net.oukranos.oreadv1.types.TaskChangeInfo;
 import net.oukranos.oreadv1.types.WaterQualityData;
 import net.oukranos.oreadv1.util.OreadLogger;
 
@@ -89,21 +92,21 @@ public class FragmentReadings extends Fragment {
 
 		_parent = this.getActivity();
 
-		/* Setup the double tap listener */
-		final GestureDetector gestureDetect = 
-				new GestureDetector(_parent, new DoubleTapListener());
+//		/* Setup the double tap listener */
+//		final GestureDetector gestureDetect = 
+//				new GestureDetector(_parent, new DoubleTapListener());
 		
 		_logView = (TextView) _viewRef.findViewById(R.id.txt_log);
-		_logView.setOnTouchListener( new OnTouchListener() {
-			@Override
-			public boolean onTouch(View v, MotionEvent event) {
-				// TODO Auto-generated method stub
-				if (gestureDetect.onTouchEvent(event)) {
-					return false;
-				}
-				return true;
-			}
-		});
+//		_logView.setOnTouchListener( new OnTouchListener() {
+//			@Override
+//			public boolean onTouch(View v, MotionEvent event) {
+//				// TODO Auto-generated method stub
+//				if (gestureDetect.onTouchEvent(event)) {
+//					return false;
+//				}
+//				return true;
+//			}
+//		});
 		
 		/* Initialize the field mappings */
 		initializeFieldMap(_viewRef);
@@ -111,7 +114,7 @@ public class FragmentReadings extends Fragment {
 		WaterQualityData data = null;
 		
 		if (_serviceAPI != null) {
-			OLog.err("Service available");
+			OLog.info("Service available");
 			
 			/* Attempt to retrieve the data from the service */
 			try {
@@ -152,29 +155,29 @@ public class FragmentReadings extends Fragment {
 	  	return;
   	}
 	
-	private class DoubleTapListener extends SimpleOnGestureListener {
-		@Override
-		public boolean onDoubleTapEvent(MotionEvent e) {
-			if (_parent != null) {
-				String logText = "";
-				
-				/* TODO HACKY */
-				if (_serviceAPI != null) {
-					try {
-						logText = _serviceAPI.getLogs(5);
-					} catch (RemoteException e1) {
-						e1.printStackTrace();
-					}
-				} else {
-					OLog.err("Service Unavailable");
-				}
-				
-				_logView.setText(logText);
-			}
-			return super.onDoubleTapEvent(e);
-		}
-		
-	}
+//	private class DoubleTapListener extends SimpleOnGestureListener {
+//		@Override
+//		public boolean onDoubleTapEvent(MotionEvent e) {
+//			if (_parent != null) {
+//				String logText = "";
+//				
+//				/* TODO HACKY */
+//				if (_serviceAPI != null) {
+//					try {
+//						logText = _serviceAPI.getLogs(5);
+//					} catch (RemoteException e1) {
+//						e1.printStackTrace();
+//					}
+//				} else {
+//					OLog.err("Service Unavailable");
+//				}
+//				
+//				_logView.setText(logText);
+//			}
+//			return super.onDoubleTapEvent(e);
+//		}
+//		
+//	}
 	  
 	/********************/
 	/** Public Methods **/
@@ -484,6 +487,10 @@ public class FragmentReadings extends Fragment {
   			return variance;
   		}
   	}
+  	
+  	private String _procString = "";
+  	private String _taskString = "";
+  	private String _stateString = "";
 			
     private class ReadFragmentSvcListener extends OreadServiceListener.Stub {
 		@Override
@@ -504,6 +511,147 @@ public class FragmentReadings extends Fragment {
 			
 			/* Start a field map update task */
 			new FieldMapUpdateTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, data);
+			
+			return;
+		}
+
+		@Override
+		public void handleOperationProcStateChanged() throws RemoteException {
+			if (_serviceAPI == null) {
+				OLog.err("Service unavailable");
+				return;
+			}
+			
+			ProcStateChangeInfo info = null;
+			try {
+				info = _serviceAPI.getProcStates();
+			} catch (RemoteException e) {
+				OLog.err("Failed to get proc states");
+			}
+			
+			if (info == null) {
+				return;
+			}
+			
+			/* Update the display to show state changes */
+			new AsyncTask<ProcStateChangeInfo, Void, String>() {
+				@Override
+				protected String doInBackground(ProcStateChangeInfo... stateInfo) {
+					_stateString = stateInfo[0].getStateInfo();
+					
+					/* Build the string */
+					String msg = "";
+					msg += "Proc: " + _procString + "\n";
+					msg += "Task: " + _taskString + "\n";
+					msg += "==================================\n";
+					msg += _stateString;
+					
+					return msg;
+				}
+
+				@Override
+				protected void onPostExecute(String info) {
+					if (info != null) {
+						_logView.setText(info);
+					}
+					return;
+				}
+				
+			}.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, info);
+			
+			return;
+		}
+
+		@Override
+		public void handleOperationProcChanged() throws RemoteException {
+			if (_serviceAPI == null) {
+				OLog.err("Service unavailable");
+				return;
+			}
+			
+			ProcChangeInfo info = null;
+			try {
+				info = _serviceAPI.getProc();
+			} catch (RemoteException e) {
+				OLog.err("Failed to get proc");
+			}
+			
+			if (info == null) {
+				return;
+			}
+			
+			/* Update the display to show state changes */
+			new AsyncTask<ProcChangeInfo, Void, String>() {
+				@Override
+				protected String doInBackground(ProcChangeInfo... procInfo) {
+					_procString = procInfo[0].getProcedure();
+					
+					/* Build the string */
+					String msg = "";
+					msg += "Proc: " + _procString + "\n";
+					msg += "Task: " + _taskString + "\n";
+					msg += "==================================\n";
+					msg += _stateString;
+					
+					return msg;
+				}
+
+				@Override
+				protected void onPostExecute(String info) {
+					if (info != null) {
+						_logView.setText(info);
+					}
+					return;
+				}
+				
+			}.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, info);
+			
+			return;
+		}
+
+		@Override
+		public void handleOperationTaskChanged() throws RemoteException {
+			if (_serviceAPI == null) {
+				OLog.err("Service unavailable");
+				return;
+			}
+			
+			TaskChangeInfo info = null;
+			try {
+				info = _serviceAPI.getTask();
+			} catch (RemoteException e) {
+				OLog.err("Failed to get task");
+			}
+			
+			if (info == null) {
+				return;
+			}
+			
+			/* Update the display to show state changes */
+			new AsyncTask<TaskChangeInfo, Void, String>() {
+				@Override
+				protected String doInBackground(TaskChangeInfo... taskInfo) {
+					_taskString = taskInfo[0].getTask();
+					
+					/* Build the string */
+					String msg = "";
+					msg += "Proc: " + _procString + "\n";
+					msg += "Task: " + _taskString + "\n";
+					msg += "==================================\n";
+					msg += _stateString;
+					
+					return msg;
+				}
+
+				@Override
+				protected void onPostExecute(String info) {
+					if (info != null) {
+						_logView.setText(info);
+					}
+					return;
+				}
+				
+			}.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, info);
 			
 			return;
 		}
@@ -577,7 +725,7 @@ public class FragmentReadings extends Fragment {
 		
 		Calendar calInstance = Calendar.getInstance(TimeZone.getTimeZone("GMT+8"));
 		int year = calInstance.get(Calendar.YEAR);
-		int month = calInstance.get(Calendar.MONTH);
+		int month = calInstance.get(Calendar.MONTH) + 1;	/* January == 0, so we always add 1 to get sensible months */
 		int day = calInstance.get(Calendar.DAY_OF_MONTH);
 		int hour = calInstance.get(Calendar.HOUR_OF_DAY);
 		int min = calInstance.get(Calendar.MINUTE);
