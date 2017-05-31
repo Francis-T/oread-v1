@@ -30,10 +30,12 @@
 #define status_t        int
 
 #define SENSOR_READ_TIMEOUT 5000
-#define SENSOR_LIST_SIZE    6
+#define SENSOR_LIST_SIZE    7
+#define DEVICE_LIST_SIZE    7
 #define SENS_BUF_MAX        32
 
 #define DUMMY_SENSOR_ID     0
+#define DUMMY_DEVICE_ID     0
 #define MASTER_I2C_ADDR     0
 #define HIGHEST_I2C_ADDR    127
 
@@ -41,9 +43,10 @@
 
 #define WATER_LVL_MON 8
 #define VALVE_CTRL    9
-#define PUMP_CTRL     10
+#define PUMP_CTRL     7
 #define FILL_VALVE    11
 #define DRAIN_VALVE   12
+#define FILL2_VALVE   13
 
 /** Type Definitions **/
 /* enum for the different Sensor States */
@@ -51,12 +54,24 @@ typedef enum sensorStates {  SENSOR_STARTED,
                              SENSOR_READING,
                              SENSOR_STOPPED } sensorState_t;
 
+/* enum for the different Device States */
+typedef enum deviceStates {  DEVICE_STARTED,
+                             DEVICE_RUNNING,
+                             DEVICE_STOPPED } deviceState_t;
+
 /* typedef for sensor read functions */
 typedef status_t (*fSensReadFunc_t)(int sensId);
 /* typedef for sensor calibrate functions */
 typedef status_t (*fSensCalibrateFunc_t)(int sensId, char param);
 /* typedef for sensor  info */
 typedef status_t (*fSensInfoFunc_t)(int sensId);
+
+/* typedef for device activate functions */
+typedef status_t (*fDeviceActivateFunc_t)(int deviceId);
+/* typedef for device update functions */
+typedef status_t (*fDeviceUpdateFunc_t)(int deviceId);
+/* typedef for device deactivate functions */
+typedef status_t (*fDeviceDeactivateFunc_t)(int deviceId);
 
 /* typedef for the Sensor Info struct */
 typedef struct sensorInfo
@@ -70,6 +85,16 @@ typedef struct sensorInfo
     int bIsComplete;
     long lReadStartTime;
 } tSensor_t;
+
+/* typedef for the Device Info struct */
+typedef struct deviceInfo
+{
+    const char* aName;
+    int iPin;
+    deviceState_t eState;
+    long lActivatedTime;
+    long lTimeout;
+} tDevice_t;
 
 /** Global Variables **/
 int  _debugMode = FALSE;
@@ -104,9 +129,12 @@ status_t proc_readSensor(char* pMsg);
 status_t proc_calibrateSensor(char* pMsg);
 status_t proc_getSensorInfo(char* pMsg);
 status_t proc_forceSensor(char* pMsg);
+status_t proc_activateDevice(char* pMsg);
+status_t proc_deactivateDevice(char* pMsg);
 status_t proc_i2cCommand(char* pMsg);
 status_t proc_processInput(char* pMsg, int iLen);
 
+int sens_getSensorId(char* aStr);
 status_t sens_atlasRead(int iSensId);
 status_t sens_atlasInfo(int iSensId);
 status_t sens_atlasCalibrate(int iSensId, char cParam);
@@ -117,17 +145,18 @@ status_t sens_turbidityCalibrate(int iSensId, char cParam);
 void sens_dataFinished(tSensor_t* pSensor);
 int sens_initSensors(void);
 
-status_t auto_openFillValve(int iValveId, char* pMsg);
-status_t auto_closeFillValve(int iValveId, char* pMsg);
-status_t auto_openDrainValve(int iValveId, char* pMsg);
-status_t auto_closeDrainValve(int iValveId, char* pMsg);
-status_t auto_startPump(char* pMsg);
-status_t auto_stopPump(char* pMsg);
+int auto_getDeviceId(char* aStr);
+status_t auto_valveActivate(int iDeviceId);
+status_t auto_valveDeactivate(int iDeviceId);
+status_t auto_pumpActivate(int iDeviceId);
+status_t auto_pumpUpdate(int iDeviceId);
+status_t auto_pumpDeactivate(int iDeviceId);
 
 status_t com_receiveUserInput();
 status_t com_sendResponse();
 
 status_t tmr_manageSensorTimeouts();
+status_t tmr_manageDeviceUpdates();
 status_t tmr_updateTimeout(tSensor_t* pSensor);
 
 int utl_atoi(const char* s);
@@ -152,7 +181,8 @@ tSensor_t _tSensor[SENSOR_LIST_SIZE] =
     { "DO", 11, SENSOR_STOPPED, Serial2, &aSensDataBuf[1][0], 0, FALSE, 0 },
     { "EC", 12, SENSOR_STOPPED, Serial3, &aSensDataBuf[2][0], 0, FALSE, 0 },
     { "TM",  9, SENSOR_STOPPED,  Serial, &aSensDataBuf[3][0], 0, FALSE, 0 },
-    { "TU",  0, SENSOR_STOPPED,  Serial, &aSensDataBuf[4][0], 0, FALSE, 0 }
+    { "TU",  0, SENSOR_STOPPED,  Serial, &aSensDataBuf[4][0], 0, FALSE, 0 },
+    { "L1",  8, SENSOR_STOPPED,  Serial, &aSensDataBuf[5][0], 0, FALSE, 0 }  /* Water Level Sensor (High) */
 };
 
 /* Lookup table for the sensor read functions */
@@ -163,7 +193,8 @@ fSensReadFunc_t _fSensorReadFunc[SENSOR_LIST_SIZE] =
     sens_atlasRead,
     sens_atlasRead,
     sens_temperatureRead,
-    sens_turbidityRead
+    sens_turbidityRead,
+    sens_levelRead
 };
 
 /* Lookup table for the sensor info functions */
@@ -174,9 +205,11 @@ fSensInfoFunc_t _fSensorInfoFunc[SENSOR_LIST_SIZE] =
     sens_atlasInfo,
     sens_atlasInfo,
     sens_temperatureInfo,
-    sens_turbidityInfo
+    sens_turbidityInfo,
+    NULL
 };
 
+/* Lookup table for the sensor calibrate functions */
 fSensCalibrateFunc_t _fSensorCalibrateFunc[SENSOR_LIST_SIZE] =
 {
     NULL,
@@ -184,7 +217,56 @@ fSensCalibrateFunc_t _fSensorCalibrateFunc[SENSOR_LIST_SIZE] =
     sens_atlasCalibrate,
     sens_atlasCalibrate,
     sens_temperatureCalibrate,
-    sens_turbidityCalibrate
+    sens_turbidityCalibrate,
+    NULL
+};
+
+/* Lookup table for the devices */
+tDevice_t _tDevice[DEVICE_LIST_SIZE] =
+{
+    { "XX",  0, DEVICE_STOPPED, 0,     0 },
+    { "V1", 12, DEVICE_STOPPED, 0,     0 },
+    { "S1", 11, DEVICE_STOPPED, 0, 60000 },
+    { "L1",  8, DEVICE_STOPPED, 0,     0 },
+    { "P1", 10, DEVICE_STOPPED, 0, 60000 },
+    { "P2",  7, DEVICE_STOPPED, 0, 60000 },
+    { "P3",  9, DEVICE_STOPPED, 0, 60000 }
+};
+
+/* Lookup table for the device activation functions */
+fDeviceActivateFunc_t _fDeviceActivateFunc[DEVICE_LIST_SIZE] =
+{
+    NULL,
+    auto_valveActivate,
+    auto_pumpActivate,
+    NULL,
+    auto_pumpActivate,
+    auto_pumpActivate,
+    auto_pumpActivate
+};
+
+/* Lookup table for the device update functions */
+fDeviceUpdateFunc_t _fDeviceUpdateFunc[DEVICE_LIST_SIZE] =
+{
+    NULL,
+    NULL,
+    auto_pumpUpdate,
+    NULL,
+    auto_pumpUpdate,
+    auto_pumpUpdate,
+    auto_pumpUpdate
+};
+
+/* Lookup table for the device deactivation functions */
+fDeviceDeactivateFunc_t _fDeviceDeactivateFunc[DEVICE_LIST_SIZE] =
+{
+    NULL,
+    auto_valveDeactivate,
+    auto_pumpDeactivate,
+    NULL,
+    auto_pumpDeactivate,
+    auto_pumpDeactivate,
+    auto_pumpDeactivate
 };
 
 /* Input/Output:
@@ -200,11 +282,22 @@ fSensCalibrateFunc_t _fSensorCalibrateFunc[SENSOR_LIST_SIZE] =
 void setup() {
     Serial.begin(9600);
     Wire.begin();
-    pinMode(VALVE_CTRL, OUTPUT);
-    pinMode(PUMP_CTRL, OUTPUT);
-    pinMode(FILL_VALVE, OUTPUT);
-    pinMode(DRAIN_VALVE, OUTPUT);
-    pinMode(WATER_LVL_MON, INPUT);
+//    pinMode(VALVE_CTRL, OUTPUT);
+//    pinMode(PUMP_CTRL, OUTPUT);
+//    pinMode(FILL_VALVE, OUTPUT);
+//    pinMode(FILL2_VALVE, OUTPUT);
+//    pinMode(DRAIN_VALVE, OUTPUT);
+//    pinMode(WATER_LVL_MON, INPUT);
+    
+    for (int i = 7; i <= 12; i++)
+    {
+      if (i == WATER_LVL_MON) 
+      {
+        pinMode(i, INPUT);
+        continue;
+      }
+      pinMode(i, OUTPUT);
+    }
     
     utl_clearBuffer(_aRxBuffer, sizeof(char), SZ_RX_BUFFER);
     utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
@@ -230,6 +323,11 @@ void loop() {
 
     if (tmr_manageSensorTimeouts() != STATUS_OK) {
         dbg_print(MOD_NAME, "Error", "Failed to manage sensor timeouts!");
+        return;
+    }
+
+    if (tmr_manageDeviceUpdates() != STATUS_OK) {
+        dbg_print(MOD_NAME, "Error", "Failed to manage device updates!");
         return;
     }
 
@@ -361,6 +459,12 @@ status_t proc_readSensor(char* pMsg) {
     utl_getField(pMsg, aParams, 2, ' ');
     iSensId = utl_atoi(aParams);
 
+    /* Attempt to match the sensor id by matching the sensor name */
+    if (iSensId == DUMMY_SENSOR_ID)
+    {
+        iSensId = sens_getSensorId(aParams);
+    }
+
     /* Ensure that we're not accessing invalid sensor IDs */
     if ( (iSensId <= DUMMY_SENSOR_ID) || (iSensId >= SENSOR_LIST_SIZE) ) {
         dbg_print(MOD_NAME, "Error", "Invalid Sensor Id");
@@ -389,6 +493,12 @@ status_t proc_calibrateSensor(char* pMsg)
     utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
     utl_getField(pMsg, aParams, 2, ' ');
     iSensId = utl_atoi(aParams);
+
+    /* Attempt to match the sensor id by matching the sensor name */
+    if (iSensId == DUMMY_SENSOR_ID)
+    {
+        iSensId = sens_getSensorId(aParams);
+    }
 
     /* Ensure that we're not accessing invalid sensor IDs */
     if ( (iSensId <= DUMMY_SENSOR_ID) || (iSensId >= SENSOR_LIST_SIZE) ) {
@@ -430,6 +540,12 @@ status_t proc_getSensorInfo(char* pMsg)
     utl_getField(pMsg, aParams, 2, ' ');
     iSensId = utl_atoi(aParams);
 
+    /* Attempt to match the sensor id by matching the sensor name */
+    if (iSensId == DUMMY_SENSOR_ID)
+    {
+        iSensId = sens_getSensorId(aParams);
+    }
+
     /* Ensure that we're not accessing invalid sensor IDs */
     if ( (iSensId <= DUMMY_SENSOR_ID) || (iSensId >= SENSOR_LIST_SIZE) ) {
         dbg_print(MOD_NAME, "Error", "Invalid Sensor Id");
@@ -460,9 +576,22 @@ status_t proc_forceSensor(char* pMsg)
     utl_getField(pMsg, aParams, 2, ' ');
     iSensId = utl_atoi(aParams);
 
+    /* Attempt to match the sensor id by matching the sensor name */
+    if (iSensId == DUMMY_SENSOR_ID)
+    {
+        iSensId = sens_getSensorId(aParams);
+    }
+
     /* Ensure that we're not accessing invalid sensor IDs */
     if ( (iSensId <= DUMMY_SENSOR_ID) || (iSensId >= SENSOR_LIST_SIZE) ) {
         dbg_print(MOD_NAME, "Error", "Invalid Sensor Id");
+        return STATUS_FAILED;
+    }
+    
+    /* Ensure that we're only doing this for Atlas sensors */
+    if ( (iSensId < 1) || (iSensId > 3) )
+    {
+        dbg_print(MOD_NAME, "Error", "Not an Atlas Scientific Sensor");
         return STATUS_FAILED;
     }
 
@@ -481,6 +610,75 @@ status_t proc_forceSensor(char* pMsg)
 
     /* Call the send function for this sensor */
     sens_atlasSendCmd(&_tSensor[iSensId], pCmd);
+
+    return STATUS_OK;
+}
+
+/*
+ * @function     proc_activateDevice()
+ * @description  Activates a device
+ * @returns      exit status
+ */
+status_t proc_activateDevice(char* pMsg)
+{
+    int  iDeviceId = -1;
+    char aParams[5];
+
+    /* Extract the Device Id target for this activation */
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 2, ' ');
+    iDeviceId = utl_atoi(aParams);
+
+    /* Attempt to match the device id by matching the device name */
+    if (iDeviceId == DUMMY_DEVICE_ID)
+    {
+        dbg_print(MOD_NAME, "Info", "Looking for device name instead");
+        iDeviceId = auto_getDeviceId(aParams);
+    }
+
+    if ((iDeviceId < DUMMY_DEVICE_ID) || (iDeviceId > DEVICE_LIST_SIZE))
+    {
+        return STATUS_FAILED;
+    }
+
+    if (_fDeviceActivateFunc[iDeviceId] != NULL)
+    {
+        return _fDeviceActivateFunc[iDeviceId](iDeviceId);
+    }
+
+    return STATUS_OK;
+}
+
+/*
+ * @function     proc_deactivateDevice()
+ * @description  Deactivates a device
+ * @returns      exit status
+ */
+status_t proc_deactivateDevice(char* pMsg)
+{
+    int  iDeviceId = -1;
+    char aParams[5];
+
+    /* Extract the Device Id target for this activation */
+    utl_clearBuffer(aParams, sizeof(aParams[0]), 5);
+    utl_getField(pMsg, aParams, 2, ' ');
+    iDeviceId = utl_atoi(aParams);
+
+    /* Attempt to match the device id by matching the device name */
+    if (iDeviceId == DUMMY_DEVICE_ID)
+    {
+        iDeviceId = auto_getDeviceId(aParams);
+    }
+
+    if ((iDeviceId < DUMMY_DEVICE_ID) || (iDeviceId > DEVICE_LIST_SIZE))
+    {
+        return STATUS_FAILED;
+    }
+
+    if (_fDeviceDeactivateFunc[iDeviceId] != NULL)
+    {
+        return _fDeviceDeactivateFunc[iDeviceId](iDeviceId);
+    }
 
     return STATUS_OK;
 }
@@ -683,18 +881,10 @@ status_t proc_processInput(char* pMsg, int iLen) {
         proc_calibrateSensor(pMsg); /* TODO */
     } else if (utl_compare(pMsg, "FORCE", 5) == MATCHED) {
         proc_forceSensor(pMsg); /* TODO */
-    } else if (utl_compare(pMsg, "FILL START", 10) == MATCHED) {
-        auto_openFillValve(FILL_VALVE, pMsg);
-    } else if (utl_compare(pMsg, "FILL STOP", 9) == MATCHED) {
-        auto_closeFillValve(FILL_VALVE, pMsg);
-    } else if (utl_compare(pMsg, "DRAIN START", 11) == MATCHED) {
-        auto_openDrainValve(DRAIN_VALVE, pMsg);
-    } else if (utl_compare(pMsg, "DRAIN STOP", 10) == MATCHED) {
-        auto_closeDrainValve(DRAIN_VALVE, pMsg);
-    } else if (utl_compare(pMsg, "PUMP START", 10) == MATCHED) {
-        auto_startPump(pMsg); /* TODO */
-    } else if (utl_compare(pMsg, "PUMP STOP", 9) == MATCHED) {
-        auto_stopPump(pMsg); /* TODO */  
+    } else if  (utl_compare(pMsg, "ACTV", 4) == MATCHED) {
+        proc_activateDevice(pMsg);
+    } else if  (utl_compare(pMsg, "DEAC", 4) == MATCHED) {
+        proc_deactivateDevice(pMsg);
     } else if (utl_compare(pMsg, "I2C", 3) == MATCHED) {
         proc_i2cCommand(pMsg); /* TODO */
     #ifndef __USE_ARDUINO__
@@ -713,6 +903,19 @@ status_t proc_processInput(char* pMsg, int iLen) {
 /* SEC03: Sensor Handling Modules                                             */
 /******************************************************************************/
 #define MOD_NAME "sens"
+int sens_getSensorId(char* aStr)
+{
+    for (int iSensorIdx = 1; iSensorIdx < DEVICE_LIST_SIZE; iSensorIdx++)
+    {
+        if( utl_compare(aStr, _tSensor[iSensorIdx].aName, 2) == MATCHED )
+        {
+            return iSensorIdx;
+        }
+    }
+
+    return -1;
+}
+
 status_t sens_atlasRead(int iSensId)
 {
     _tSensor[iSensId].lReadStartTime = millis();
@@ -761,6 +964,7 @@ status_t sens_turbidityRead(int iSensId)
     float TU_value;
     int i;
     char aTuValStr[8];
+    char aTuAveStr[8];
     
     /* Read the input on analog pin 0 */
     /* Puts 4 values into an array */
@@ -776,6 +980,8 @@ status_t sens_turbidityRead(int iSensId)
         TU_array[i] = rand()*100;
 #endif
     }
+    
+    // y = -5.5582101515x + 5058.2061439338
   	
     /* Sum of the values in the array   */
     for (int i = 0; i < TU_samplesize; ++i)
@@ -806,12 +1012,17 @@ status_t sens_turbidityRead(int iSensId)
 
     utl_clearBuffer(aTuValStr, sizeof(char), 8);
     dtostrf(TU_value, 5, 2, aTuValStr);
-
+    
+    utl_clearBuffer(aTuAveStr, sizeof(char), 8);
+    dtostrf(TU_average, 5, 2, aTuAveStr);
+    
     /* Write to buffer */
     utl_clearBuffer(_tSensor[iSensId].aBuf, sizeof(char), SENS_BUF_MAX);
     utl_strNCpy(_tSensor[iSensId].aBuf, _tSensor[iSensId].aName, 2);
     utl_strNCat(_tSensor[iSensId].aBuf, ": ", 2);
     utl_strNCat(_tSensor[iSensId].aBuf, aTuValStr, 7);
+    utl_strNCat(_tSensor[iSensId].aBuf, ",", 1);
+    utl_strNCat(_tSensor[iSensId].aBuf, aTuAveStr, 7);
 
     _tSensor[iSensId].bIsComplete = TRUE;
     sens_dataFinished(&_tSensor[iSensId]);
@@ -968,6 +1179,31 @@ status_t sens_temperatureInfo(int iSensId)
   return STATUS_OK;
 }
 
+status_t sens_levelRead(int iSensId)
+{
+  int iSensVal;
+
+  /* Read the water level from the sensor's pin */
+  iSensVal = digitalRead(_tSensor[iSensId].iPin);
+
+  utl_clearBuffer(_tSensor[iSensId].aBuf, sizeof(char), SENS_BUF_MAX);
+  utl_strNCpy(_tSensor[iSensId].aBuf, _tSensor[iSensId].aName, 2);
+  utl_strNCat(_tSensor[iSensId].aBuf, ": ", 2);
+  if (iSensVal > 0)
+  {
+    utl_strNCat(_tSensor[iSensId].aBuf, "LOW", 3);
+  }
+  else
+  {
+    utl_strNCat(_tSensor[iSensId].aBuf, "HIGH", 4);
+  }
+
+  _tSensor[iSensId].bIsComplete = TRUE;
+  sens_dataFinished(&_tSensor[iSensId]);
+
+  return STATUS_OK;
+}
+
 void sens_dataFinished(tSensor_t* pSensor) {
     int iBufLen = 0;
 
@@ -1017,139 +1253,119 @@ int sens_initSensors(void)
 /* SEC04: Automation Modules                                                  */
 /******************************************************************************/
 #define MOD_NAME "AUTO"
-status_t auto_openFillValve(int iValveId, char* pMsg)
+int auto_getDeviceId(char* aStr)
 {
-  int iSafety = 1800;
-  int iCutoff = 1;
-
-  digitalWrite(iValveId, HIGH);
-
-  dbg_print(MOD_NAME, "Info", "Fill valve opened");
-
-  do {
-    if (iSafety <= 0)
+    for (int iDeviceIdx = 1; iDeviceIdx < DEVICE_LIST_SIZE; iDeviceIdx++)
     {
-      break;
+        if( utl_compare(aStr, _tDevice[iDeviceIdx].aName, 2) == MATCHED )
+        {
+            return iDeviceIdx;
+        }
     }
     
-    iCutoff = digitalRead(WATER_LVL_MON);
-    iSafety--;
+    dbg_print(MOD_NAME, "Error", "No device matched");
+    return -1;
+}
+
+status_t auto_valveActivate(int iDeviceId)
+{
+    int iDevicePin = _tDevice[iDeviceId].iPin;
+
+    digitalWrite(iDevicePin, HIGH);
+
+    /* Write to buffer */
+    utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+    utl_strNCpy(_aTxBuffer, _tDevice[iDeviceId].aName, 2);
+    utl_strNCat(_aTxBuffer, ": ", 2);
+    utl_strNCat(_aTxBuffer, "OPENED", 6);
+    _iTxBufferLen = utl_strLen(_aTxBuffer);
     
-    delay(50);
-  } while(iCutoff > 0);
-
-  digitalWrite(iValveId, LOW);
-  
-  /* Write to buffer */
-  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
-  utl_strNCpy(_aTxBuffer, "FV: DONE", 8);
-  _iTxBufferLen = utl_strLen(_aTxBuffer);
-
-  dbg_print(MOD_NAME, "Info", "Fill valve closed");
-
-  return STATUS_OK;
+    return STATUS_OK;
 }
 
-status_t auto_closeFillValve(int iValveId, char* pMsg)
+status_t auto_valveDeactivate(int iDeviceId)
 {
-  digitalWrite(iValveId, LOW);
-  /* Write to buffer */
-  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
-  utl_strNCpy(_aTxBuffer, "FV: DONE", 8);
-  _iTxBufferLen = utl_strLen(_aTxBuffer);
+    int iDevicePin = _tDevice[iDeviceId].iPin;
 
-  dbg_print(MOD_NAME, "Info", "Fill valve closed");
+    digitalWrite(iDevicePin, LOW);
 
-  return STATUS_OK;
+    /* Write to buffer */
+    utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+    utl_strNCpy(_aTxBuffer, _tDevice[iDeviceId].aName, 2);
+    utl_strNCat(_aTxBuffer, ": ", 2);
+    utl_strNCat(_aTxBuffer, "CLOSED", 6);
+    _iTxBufferLen = utl_strLen(_aTxBuffer);
+    
+    return STATUS_OK;
 }
 
-status_t auto_openDrainValve(int iValveId, char* pMsg)
+status_t auto_pumpActivate(int iDeviceId)
 {
-//int iSafety = 1800;
-//int iCutoff = 1;
-  digitalWrite(iValveId, HIGH);
-//do {
-//  if (iSafety <= 0)
-//  {
-//    break;
-//  }
-//  
-//  iCutoff = digitalRead(WATER_LVL_MON);
-//  iSafety--;
-//  delay(50);
-//  
-//} while(iCutoff > 0);
-//digitalWrite(iValveId, LOW);
-  
-  /* Write to buffer */
-  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
-  utl_strNCpy(_aTxBuffer, "DV: DONE", 8);
-  _iTxBufferLen = utl_strLen(_aTxBuffer);
+    int iDevicePin = _tDevice[iDeviceId].iPin;
 
-  dbg_print(MOD_NAME, "Info", "Drain valve opened");
+    digitalWrite(iDevicePin, HIGH);
 
-  return STATUS_OK;
+    _tDevice[iDeviceId].lActivatedTime = millis();
+
+    /* Write to buffer */
+    utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+    utl_strNCpy(_aTxBuffer, _tDevice[iDeviceId].aName, 2);
+    utl_strNCat(_aTxBuffer, ": ", 2);
+    utl_strNCat(_aTxBuffer, "STARTED", 7);
+    _iTxBufferLen = utl_strLen(_aTxBuffer);
+    
+    return STATUS_OK;
 }
 
-status_t auto_closeDrainValve(int iValveId, char* pMsg)
+status_t auto_pumpUpdate(int iDeviceId)
 {
-  digitalWrite(iValveId, LOW);
+    int iCutoff = 1;
+    int iDevicePin = _tDevice[iDeviceId].iPin;
+    long lTimeActivated = _tDevice[iDeviceId].lActivatedTime;
+    long lElapsedTime = 0;
 
-  /* Write to buffer */
-  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
-  utl_strNCpy(_aTxBuffer, "DV: DONE", 8);
-  _iTxBufferLen = utl_strLen(_aTxBuffer);
-
-  dbg_print(MOD_NAME, "Info", "Drain valve closed");
-
-  return STATUS_OK;
-}
-
-status_t auto_startPump(char* pMsg)
-{
-  int iSafety = 1800;
-  int iCutoff = 1;
-
-  digitalWrite(PUMP_CTRL, HIGH);
-
-  dbg_print(MOD_NAME, "Info", "Fill valve opened");
-
-  do {
-    if (iSafety <= 0)
+    /* An activated time value of zero means this device
+     *  has never been activated so we can safely skip it */
+    if (lTimeActivated <= 0)
     {
-      break;
+        return STATUS_OK;
     }
-    
+
+    /* Check if the elapsed time exceeds the device's timeout value */
+    lElapsedTime = millis() - lTimeActivated;
+    if (lElapsedTime >= _tDevice[iDeviceId].lTimeout)
+    {
+        dbg_print(MOD_NAME, "Info", "Pump Timeout");
+        return auto_pumpDeactivate(iDeviceId);
+    }
+
+    /* Otherwise, check the water level sensor */
     iCutoff = digitalRead(WATER_LVL_MON);
-    iSafety--;
-    
-    delay(50);
-  } while(iCutoff > 0);
+    if (iCutoff <= 0)
+    {
+        dbg_print(MOD_NAME, "Info", "Water Level Reached");
+        return auto_pumpDeactivate(iDeviceId);
+    }
 
-  digitalWrite(PUMP_CTRL, LOW);
-
-  /* Write to buffer */
-  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
-  utl_strNCpy(_aTxBuffer, "PM: DONE", 8);
-  _iTxBufferLen = utl_strLen(_aTxBuffer);
-
-  dbg_print(MOD_NAME, "Info", "Pump stopped");
-
-  return STATUS_OK;
+    return STATUS_OK;
 }
 
-status_t auto_stopPump(char* pMsg)
+status_t auto_pumpDeactivate(int iDeviceId)
 {
-  digitalWrite(PUMP_CTRL, LOW);
+    int iDevicePin = _tDevice[iDeviceId].iPin;
 
-  /* Write to buffer */
-  utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
-  utl_strNCpy(_aTxBuffer, "PM: DONE", 8);
-  _iTxBufferLen = utl_strLen(_aTxBuffer);
+    digitalWrite(iDevicePin, LOW);
 
-  dbg_print(MOD_NAME, "Info", "Pump stopped");
+    _tDevice[iDeviceId].lActivatedTime = 0; 
 
-  return STATUS_OK;
+    /* Write to buffer */
+    utl_clearBuffer(_aTxBuffer, sizeof(char), SZ_TX_BUFFER);
+    utl_strNCpy(_aTxBuffer, _tDevice[iDeviceId].aName, 2);
+    utl_strNCat(_aTxBuffer, ": ", 2);
+    utl_strNCat(_aTxBuffer, "STOPPED", 7);
+    _iTxBufferLen = utl_strLen(_aTxBuffer);
+    
+    return STATUS_OK;
 }
 
 /******************************************************************************/
@@ -1243,6 +1459,26 @@ status_t tmr_manageSensorTimeouts()
                 (_tSensor[iSensIdx].bIsComplete == FALSE) ) {
             if ( tmr_updateTimeout(&_tSensor[iSensIdx]) != STATUS_OK ) {
                 dbg_print(MOD_NAME, "Error", "Update timeout failed");
+            }
+        }
+    }
+    return STATUS_OK;
+}
+
+status_t tmr_manageDeviceUpdates()
+{
+    int iDeviceIdx;
+    status_t tRet = STATUS_FAILED;
+
+    for (iDeviceIdx = 1; iDeviceIdx < DEVICE_LIST_SIZE; iDeviceIdx++)
+    {
+        if (_fDeviceUpdateFunc[iDeviceIdx] != NULL)
+        {
+            tRet = _fDeviceUpdateFunc[iDeviceIdx](iDeviceIdx);
+            if (tRet != STATUS_OK)
+            {
+                dbg_print(MOD_NAME, "Warn", "Device update failed");
+                continue;
             }
         }
     }

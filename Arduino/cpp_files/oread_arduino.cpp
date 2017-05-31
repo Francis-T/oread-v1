@@ -1733,4 +1733,3 @@ void dbg_printChar(const char* pTag, const char* pMsg, char cVal)
 #endif /* __OREAD_ARDUINO_C__ */
 
 
-
